@@ -16,9 +16,15 @@ date or range of dates.
 
 **Contents**
 
+*   [Design & API documentation](#design-api-documentation)
 *   [Using date pickers](#using-date-pickers)
 *   [Calendar date picker](#calendar-date-picker)
 *   [Theming date pickers](#theming-date-pickers)
+
+## Design & API Documentation
+
+*   [Google Material3 Spec](https://material.io/components/date-pickers/overview)
+*   [API reference](https://developer.android.com/reference/com/google/android/material/datepicker/package-summary)
 
 ## Using date pickers
 
@@ -95,6 +101,14 @@ MaterialDatePicker.Builder().datePicker()
     .setInputMode(MaterialDatePicker.INPUT_MODE_TEXT)
 ```
 
+A `DayViewDecorator` can be set allowing customizing the day of month views within the picker ([example of a `DayViewDecorator`](https://github.com/material-components/material-components-android/tree/master/catalog/java/io/material/catalog/datepicker/CircleIndicatorDecorator.java)):
+
+```kt
+MaterialDatePicker.Builder().datePicker()
+      ...
+    .setDayViewDecorator(new CircleIndicatorDecorator())
+```
+
 To show the picker to the user:
 
 ```kt
@@ -103,7 +117,7 @@ To show the picker to the user:
 
 Subscribe to button clicks or dismiss events with the following calls:
 
-```
+```kt
 picker.addOnPositiveButtonClickListener {
     // Respond to positive button click.
 }
@@ -153,6 +167,14 @@ val february = calendar.timeInMillis
 val constraintsBuilder =
    CalendarConstraints.Builder()
        .setOpenAt(february)
+```
+
+To set the first day of the week:
+
+```kt
+val constraintsBuilder =
+   CalendarConstraints.Builder()
+       .setFirstDayOfWeek(Calendar.MONDAY)
 ```
 
 To set a validator:
@@ -271,6 +293,13 @@ The following diagram shows the elements of a date picker:
 5.  Month pagination
 6.  Current date
 7.  Selected date
+
+### Container
+
+Element   | Attribute             | Related method(s) | Default value
+--------- | --------------------- | ----------------- | -------------
+**Color** | `app:backgroundTint`  | N/A               | `?attr/colorSurfaceContainerHigh`
+**Shape** | `app:shapeAppearance` | N/A               | `?attr/shapeAppearanceCornerExtraLarge`
 
 ### Title
 

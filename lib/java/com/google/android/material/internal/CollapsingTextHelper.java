@@ -75,7 +75,7 @@ public final class CollapsingTextHelper {
   // by using our own texture
   private static final boolean USE_SCALING_TEXTURE = Build.VERSION.SDK_INT < 18;
   private static final String TAG = "CollapsingTextHelper";
-  private static final String ELLIPSIS_NORMAL = "\u2026"; // HORIZONTAL ELLIPSIS (…)
+  private static final String ELLIPSIS_NORMAL = "\u2026"; // HORIZONTAL ELLIPSIS (...)
 
   private static final float FADE_MODE_THRESHOLD_FRACTION_RELATIVE = 0.5f;
 
@@ -230,6 +230,14 @@ public final class CollapsingTextHelper {
 
   public void setExpandedTextColor(ColorStateList textColor) {
     if (expandedTextColor != textColor) {
+      expandedTextColor = textColor;
+      recalculate();
+    }
+  }
+
+  public void setCollapsedAndExpandedTextColor(@Nullable ColorStateList textColor) {
+    if (collapsedTextColor != textColor || expandedTextColor != textColor) {
+      collapsedTextColor = textColor;
       expandedTextColor = textColor;
       recalculate();
     }
@@ -664,6 +672,14 @@ public final class CollapsingTextHelper {
       int textAlpha = (int) (calculateFadeModeTextAlpha(fraction) * originalAlpha);
 
       textPaint.setAlpha(textAlpha);
+      // Workaround for API 31(+). Applying the shadow color for the painted text.
+      if (VERSION.SDK_INT >= VERSION_CODES.S) {
+        textPaint.setShadowLayer(
+            currentShadowRadius,
+            currentShadowDx,
+            currentShadowDy,
+            MaterialColors.compositeARGBWithAlpha(currentShadowColor, textPaint.getAlpha()));
+      }
     }
 
     ViewCompat.postInvalidateOnAnimation(view);
@@ -875,25 +891,33 @@ public final class CollapsingTextHelper {
 
   private void drawMultilineTransition(@NonNull Canvas canvas, float currentExpandedX, float y) {
     int originalAlpha = textPaint.getAlpha();
-    // position expanded text appropriately
+    // position text appropriately
     canvas.translate(currentExpandedX, y);
-    // Expanded text
-    textPaint.setAlpha((int) (expandedTextBlend * originalAlpha));
-    // Workaround for API 31(+). Paint applies an inverse alpha of Paint object on the shadow layer
-    // when collapsing mode is scale and shadow color is opaque. The workaround is to set the shadow
-    // not opaque. Then Paint will respect to the color's alpha. Applying the shadow color for
-    // expanded text.
-    if (VERSION.SDK_INT >= VERSION_CODES.S) {
-      textPaint.setShadowLayer(
-          currentShadowRadius,
-          currentShadowDx,
-          currentShadowDy,
-          MaterialColors.compositeARGBWithAlpha(currentShadowColor, textPaint.getAlpha()));
+
+    if (!fadeModeEnabled) {
+      // Expanded text (when not in fade mode, because in fade mode at this point the expanded text
+      // has been fully faded out, so there's no need to try to draw it again)
+      textPaint.setAlpha((int) (expandedTextBlend * originalAlpha));
+      // Workaround for API 31(+). Paint applies an inverse alpha of Paint object on the shadow
+      // layer when collapsing mode is scale and shadow color is opaque. The workaround is to set
+      // the shadow not opaque. Then Paint will respect to the color's alpha. Applying the shadow
+      // color for expanded text.
+      if (VERSION.SDK_INT >= VERSION_CODES.S) {
+        textPaint.setShadowLayer(
+            currentShadowRadius,
+            currentShadowDx,
+            currentShadowDy,
+            MaterialColors.compositeARGBWithAlpha(currentShadowColor, textPaint.getAlpha()));
+      }
+      textLayout.draw(canvas);
     }
-    textLayout.draw(canvas);
 
     // Collapsed text
-    textPaint.setAlpha((int) (collapsedTextBlend * originalAlpha));
+    if (!fadeModeEnabled) {
+      // Only change the collapsed text alpha when not in fade mode, because when in fade mode it
+      // will be precalculated based on the current fraction in calculateOffsets()
+      textPaint.setAlpha((int) (collapsedTextBlend * originalAlpha));
+    }
     // Workaround for API 31(+). Applying the shadow color for collapsed text.
     if (VERSION.SDK_INT >= VERSION_CODES.S) {
       textPaint.setShadowLayer(
@@ -1010,9 +1034,11 @@ public final class CollapsingTextHelper {
       // collapsed text size
       float scaledDownWidth = expandedWidth * textSizeRatio;
 
-      if (forceRecalculate) {
+      if (forceRecalculate || fadeModeEnabled) {
         // If we're forcing a recalculate during a measure pass, use the expanded width since the
         // collapsed width might not be ready yet
+        // Or if the fade mode is enabled, we can also just use the expanded width because when
+        // fading out/in there is not a continuous scale transition between expanded/collapsed text
         availableWidth = expandedWidth;
       } else {
         // If the scaled down size is larger than the actual collapsed width, we need to

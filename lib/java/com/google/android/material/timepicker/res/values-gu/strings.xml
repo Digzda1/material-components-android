@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  ~ Copyright (C) 2022 The Android Open Source Project
+  ~ Copyright (C) 2023 The Android Open Source Project
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@
   <string name="material_timepicker_minute">મિનિટ</string>
   <string name="material_timepicker_hour">કલાક</string>
   <string name="material_hour_suffix">%1$s વાગ્યા છે</string>
+  <string name="material_hour_24h_suffix">%1$s કલાક</string>
   <string name="material_minute_suffix">%1$s મિનિટ</string>
   <string name="material_hour_selection">સમય પસંદ કરો</string>
   <string name="material_minute_selection">મિનિટ પસંદ કરો</string>

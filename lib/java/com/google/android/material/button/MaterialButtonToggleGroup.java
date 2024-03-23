@@ -30,6 +30,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.LinearLayout;
+import android.widget.RadioButton;
+import android.widget.ToggleButton;
 import androidx.annotation.BoolRes;
 import androidx.annotation.IdRes;
 import androidx.annotation.NonNull;
@@ -121,6 +123,11 @@ import java.util.TreeMap;
  * shapeAppearanceOverlay}, or {@code cornerRadius} attribute set on MaterialButton children such
  * that only the left-most corners of the first child and the right-most corners of the last child
  * retain their shape appearance or corner size.
+ *
+ * <p>For more information, see the <a
+ * href="https://github.com/material-components/material-components-android/blob/master/docs/components/Button.md">component
+ * developer guidance</a> and <a href="https://material.io/components/buttons/overview">design
+ * guidelines</a>.
  */
 public class MaterialButtonToggleGroup extends LinearLayout {
 
@@ -139,7 +146,7 @@ public class MaterialButtonToggleGroup extends LinearLayout {
     void onButtonChecked(MaterialButtonToggleGroup group, @IdRes int checkedId, boolean isChecked);
   }
 
-  private static final String LOG_TAG = MaterialButtonToggleGroup.class.getSimpleName();
+  private static final String LOG_TAG = "MButtonToggleGroup";
   private static final int DEF_STYLE_RES =
       R.style.Widget_MaterialComponents_MaterialButtonToggleGroup;
 
@@ -201,6 +208,7 @@ public class MaterialButtonToggleGroup extends LinearLayout {
     selectionRequired =
         attributes.getBoolean(R.styleable.MaterialButtonToggleGroup_selectionRequired, false);
     setChildrenDrawingOrderEnabled(true);
+    setEnabled(attributes.getBoolean(R.styleable.MaterialButtonToggleGroup_android_enabled, true));
     attributes.recycle();
 
     ViewCompat.setImportantForAccessibility(this, ViewCompat.IMPORTANT_FOR_ACCESSIBILITY_YES);
@@ -248,6 +256,9 @@ public class MaterialButtonToggleGroup extends LinearLayout {
             shapeAppearanceModel.getBottomLeftCornerSize(),
             shapeAppearanceModel.getTopRightCornerSize(),
             shapeAppearanceModel.getBottomRightCornerSize()));
+
+    // Enable children based on the MaterialButtonToggleGroup own isEnabled
+    buttonChild.setEnabled(isEnabled());
 
     ViewCompat.setAccessibilityDelegate(
         buttonChild,
@@ -443,6 +454,15 @@ public class MaterialButtonToggleGroup extends LinearLayout {
     if (this.singleSelection != singleSelection) {
       this.singleSelection = singleSelection;
       clearChecked();
+    }
+    updateChildrenA11yClassName();
+  }
+
+  private void updateChildrenA11yClassName() {
+    for (int i = 0; i < getChildCount(); i++) {
+      String className =
+          singleSelection ? RadioButton.class.getName() : ToggleButton.class.getName();
+      getChildButton(i).setA11yClassName(className);
     }
   }
 
@@ -767,6 +787,21 @@ public class MaterialButtonToggleGroup extends LinearLayout {
         return;
       }
       checkInternal(button.getId(), isChecked);
+  }
+
+  /**
+   * Enables this {@link MaterialButtonToggleGroup} and all its {@link MaterialButton} children
+   *
+   * @param enabled boolean to setEnable {@link MaterialButtonToggleGroup}
+   */
+  @Override
+  public void setEnabled(boolean enabled) {
+    super.setEnabled(enabled);
+    // Enable or disable child buttons
+    for (int i = 0; i < getChildCount(); i++) {
+      MaterialButton childButton = getChildButton(i);
+      childButton.setEnabled(enabled);
+    }
   }
 
   private class PressedStateTracker implements OnPressedChangeListener {

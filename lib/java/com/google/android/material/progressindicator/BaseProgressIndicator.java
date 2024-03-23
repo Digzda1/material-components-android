@@ -76,6 +76,7 @@ public abstract class BaseProgressIndicator<S extends BaseProgressIndicatorSpec>
   public static final int HIDE_NONE = 0;
   public static final int HIDE_OUTWARD = 1;
   public static final int HIDE_INWARD = 2;
+  public static final int HIDE_ESCAPE = 3;
 
   static final int DEF_STYLE_RES = R.style.Widget_MaterialComponents_ProgressIndicator;
 
@@ -351,6 +352,12 @@ public abstract class BaseProgressIndicator<S extends BaseProgressIndicatorSpec>
   }
 
   // ******************** Helper methods **********************
+
+  @Override
+  protected void onLayout(boolean changed, int left, int top, int right, int bottom) {
+    super.onLayout(changed, left, top, right, bottom);
+    getCurrentDrawingDelegate().invalidateCachedPaths();
+  }
 
   /** Returns the corresponding drawable based on current indeterminate state. */
   @Override
@@ -633,6 +640,84 @@ public abstract class BaseProgressIndicator<S extends BaseProgressIndicatorSpec>
   public void setTrackCornerRadius(@Px int trackCornerRadius) {
     if (spec.trackCornerRadius != trackCornerRadius) {
       spec.trackCornerRadius = min(trackCornerRadius, spec.trackThickness / 2);
+      invalidate();
+    }
+  }
+
+  /**
+   * Returns the size of the gap between the indicator and track in pixels.
+   *
+   * @see #setIndicatorTrackGapSize(int)
+   * @attr ref
+   *     com.google.android.material.progressindicator.R.styleable#BaseProgressIndicator_indicatorTrackGapSize
+   */
+  @Px
+  public int getIndicatorTrackGapSize() {
+    return spec.indicatorTrackGapSize;
+  }
+
+  /**
+   * Sets the size of the gap between the indicator and track in pixels.
+   *
+   * @param indicatorTrackGapSize The new gap size in pixels.
+   * @see #getIndicatorTrackGapSize()
+   * @attr ref
+   *     com.google.android.material.progressindicator.R.styleable#BaseProgressIndicator_indicatorTrackGapSize
+   */
+  public void setIndicatorTrackGapSize(@Px int indicatorTrackGapSize) {
+    if (spec.indicatorTrackGapSize != indicatorTrackGapSize) {
+      spec.indicatorTrackGapSize = indicatorTrackGapSize;
+      spec.validateSpec();
+      invalidate();
+    }
+  }
+
+  /**
+   * Returns the amplitude of the indicator's amplitude in pixels.
+   *
+   * @see #setAmplitude(int)
+   */
+  @Px
+  public int getAmplitude() {
+    return spec.amplitude;
+  }
+
+  /**
+   * Sets the amplitude of the indicator's amplitude in pixels.
+   *
+   * @param amplitude The new amplitude in pixels.
+   * @see #getAmplitude()
+   */
+  public void setAmplitude(@Px int amplitude) {
+    if (spec.amplitude != amplitude) {
+      spec.amplitude = amplitude;
+      requestLayout();
+    }
+  }
+
+  /**
+   * Returns the wavelength of the indicator's waveform in pixels.
+   *
+   * @see #setWavelength(int)
+   */
+  @Px
+  public int getWavelength() {
+    return spec.wavelength;
+  }
+
+  /**
+   * Sets the wavelength of the indicator's waveform in pixels.
+   *
+   * @param wavelength The new wavelength in pixels. No-op, if it equals to 0.
+   * @see #getWavelength()
+   */
+  public void setWavelength(@Px int wavelength) {
+    if (wavelength == 0) {
+      throw new IllegalArgumentException("Cannot set 0 wavelength.");
+    }
+    if (spec.wavelength != wavelength) {
+      spec.wavelength = wavelength;
+      requestLayout();
     }
   }
 
@@ -843,7 +928,7 @@ public abstract class BaseProgressIndicator<S extends BaseProgressIndicatorSpec>
 
   /** @hide */
   @RestrictTo(Scope.LIBRARY_GROUP)
-  @IntDef({HIDE_NONE, HIDE_OUTWARD, HIDE_INWARD})
+  @IntDef({HIDE_NONE, HIDE_OUTWARD, HIDE_INWARD, HIDE_ESCAPE})
   @Retention(RetentionPolicy.SOURCE)
   public @interface HideAnimationBehavior {}
 }

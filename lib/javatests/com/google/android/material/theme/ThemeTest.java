@@ -241,16 +241,28 @@ public class ThemeTest {
           R.attr.colorPrimaryInverse,
           R.attr.colorPrimaryContainer,
           R.attr.colorOnPrimaryContainer,
+          R.attr.colorPrimaryFixed,
+          R.attr.colorPrimaryFixedDim,
+          R.attr.colorOnPrimaryFixed,
+          R.attr.colorOnPrimaryFixedVariant,
           // Secondary colors.
           R.attr.colorSecondary,
           R.attr.colorOnSecondary,
           R.attr.colorSecondaryContainer,
           R.attr.colorOnSecondaryContainer,
+          R.attr.colorSecondaryFixed,
+          R.attr.colorSecondaryFixedDim,
+          R.attr.colorOnSecondaryFixed,
+          R.attr.colorOnSecondaryFixedVariant,
           // Tertiary colors.
           R.attr.colorTertiary,
           R.attr.colorOnTertiary,
           R.attr.colorTertiaryContainer,
-          R.attr.colorOnTertiaryContainer);
+          R.attr.colorOnTertiaryContainer,
+          R.attr.colorTertiaryFixed,
+          R.attr.colorTertiaryFixedDim,
+          R.attr.colorOnTertiaryFixed,
+          R.attr.colorOnTertiaryFixedVariant);
 
   /**
    * These are color attributes that all themes and theme overlays should have.
@@ -270,8 +282,16 @@ public class ThemeTest {
           R.attr.colorOnSurfaceVariant,
           R.attr.colorSurfaceInverse,
           R.attr.colorOnSurfaceInverse,
+          R.attr.colorSurfaceBright,
+          R.attr.colorSurfaceDim,
+          R.attr.colorSurfaceContainer,
+          R.attr.colorSurfaceContainerHigh,
+          R.attr.colorSurfaceContainerHighest,
+          R.attr.colorSurfaceContainerLow,
+          R.attr.colorSurfaceContainerLowest,
           // Outline color.
           R.attr.colorOutline,
+          R.attr.colorOutlineVariant,
           // Error colors.
           R.attr.colorError,
           R.attr.colorOnError,
@@ -381,6 +401,11 @@ public class ThemeTest {
           R.attr.materialCardViewOutlinedStyle,
           R.attr.materialCardViewFilledStyle,
           R.attr.materialCardViewElevatedStyle,
+          R.attr.materialSearchBarStyle,
+          R.attr.materialSearchViewStyle,
+          R.attr.materialSearchViewPrefixStyle,
+          R.attr.materialSearchViewToolbarHeight,
+          R.attr.materialSearchViewToolbarStyle,
           R.attr.materialSwitchStyle,
           R.attr.radioButtonStyle,
           R.attr.sliderStyle,

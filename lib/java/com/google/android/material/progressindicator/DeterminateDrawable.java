@@ -18,13 +18,16 @@ package com.google.android.material.progressindicator;
 
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Paint.Style;
 import android.graphics.Rect;
+import android.widget.ProgressBar;
 import androidx.annotation.NonNull;
+import androidx.core.math.MathUtils;
 import androidx.dynamicanimation.animation.DynamicAnimation;
 import androidx.dynamicanimation.animation.FloatPropertyCompat;
 import androidx.dynamicanimation.animation.SpringAnimation;
 import androidx.dynamicanimation.animation.SpringForce;
-import com.google.android.material.color.MaterialColors;
+import com.google.android.material.progressindicator.DrawingDelegate.ActiveIndicator;
 
 /** This class draws the graphics for determinate mode. */
 public final class DeterminateDrawable<S extends BaseProgressIndicatorSpec>
@@ -33,6 +36,9 @@ public final class DeterminateDrawable<S extends BaseProgressIndicatorSpec>
   private static final int MAX_DRAWABLE_LEVEL = 10000;
   // The constant for spring force stiffness.
   private static final float SPRING_FORCE_STIFFNESS = SpringForce.STIFFNESS_VERY_LOW;
+  // If the progress is less than 1%, the gap will be proportional to the progress. So that, it
+  // draws a full track at 0%.
+  static final float GAP_RAMP_DOWN_THRESHOLD = 0.01f;
 
   // Drawing delegate object.
   private DrawingDelegate<S> drawingDelegate;
@@ -40,8 +46,8 @@ public final class DeterminateDrawable<S extends BaseProgressIndicatorSpec>
   // Animation.
   private final SpringForce springForce;
   private final SpringAnimation springAnimation;
-  // Fraction of displayed indicator in the total width.
-  private float indicatorFraction;
+  // Active indicator for the progress.
+  private final ActiveIndicator activeIndicator;
   // Whether to skip the spring animation on level change event.
   private boolean skipAnimationOnLevelChange = false;
 
@@ -52,6 +58,7 @@ public final class DeterminateDrawable<S extends BaseProgressIndicatorSpec>
     super(context, baseSpec);
 
     setDrawingDelegate(drawingDelegate);
+    activeIndicator = new ActiveIndicator();
 
     springForce = new SpringForce();
 
@@ -74,7 +81,23 @@ public final class DeterminateDrawable<S extends BaseProgressIndicatorSpec>
   @NonNull
   public static DeterminateDrawable<LinearProgressIndicatorSpec> createLinearDrawable(
       @NonNull Context context, @NonNull LinearProgressIndicatorSpec spec) {
-    return new DeterminateDrawable<>(context, /*baseSpec=*/ spec, new LinearDrawingDelegate(spec));
+    return createLinearDrawable(context, spec, new LinearDrawingDelegate(spec));
+  }
+
+  /**
+   * Creates an instance of {@link DeterminateDrawable} for {@link LinearProgressIndicator} with
+   * {@link LinearProgressIndicatorSpec}.
+   *
+   * @param context The current context.
+   * @param spec The spec for the linear indicator.
+   * @param drawingDelegate The LinearDrawingDelegate object.
+   */
+  @NonNull
+  static DeterminateDrawable<LinearProgressIndicatorSpec> createLinearDrawable(
+      @NonNull Context context,
+      @NonNull LinearProgressIndicatorSpec spec,
+      @NonNull LinearDrawingDelegate drawingDelegate) {
+    return new DeterminateDrawable<>(context, /* baseSpec= */ spec, drawingDelegate);
   }
 
   /**
@@ -87,8 +110,23 @@ public final class DeterminateDrawable<S extends BaseProgressIndicatorSpec>
   @NonNull
   public static DeterminateDrawable<CircularProgressIndicatorSpec> createCircularDrawable(
       @NonNull Context context, @NonNull CircularProgressIndicatorSpec spec) {
-    return new DeterminateDrawable<>(
-        context, /*baseSpec=*/ spec, new CircularDrawingDelegate(spec));
+    return createCircularDrawable(context, spec, new CircularDrawingDelegate(spec));
+  }
+
+  /**
+   * Creates an instance of {@link DeterminateDrawable} for {@link CircularProgressIndicator} with
+   * {@link CircularProgressIndicatorSpec}.
+   *
+   * @param context The current context.
+   * @param spec The spec for the circular indicator.
+   * @param drawingDelegate The CircularDrawingDelegate object.
+   */
+  @NonNull
+  static DeterminateDrawable<CircularProgressIndicatorSpec> createCircularDrawable(
+      @NonNull Context context,
+      @NonNull CircularProgressIndicatorSpec spec,
+      @NonNull CircularDrawingDelegate drawingDelegate) {
+    return new DeterminateDrawable<>(context, /* baseSpec= */ spec, drawingDelegate);
   }
 
   public void addSpringAnimationEndListener(
@@ -195,25 +233,55 @@ public final class DeterminateDrawable<S extends BaseProgressIndicatorSpec>
     }
 
     canvas.save();
-    drawingDelegate.validateSpecAndAdjustCanvas(canvas, getBounds(), getGrowFraction());
+    drawingDelegate.validateSpecAndAdjustCanvas(
+        canvas, getBounds(), getGrowFraction(), isShowing(), isHiding());
 
-    // Draws the track.
-    drawingDelegate.fillTrack(canvas, paint);
-    // Draws the indicator.
-    int indicatorColor =
-        MaterialColors.compositeARGBWithAlpha(baseSpec.indicatorColors[0], getAlpha());
-    drawingDelegate.fillIndicator(canvas, paint, 0f, getIndicatorFraction(), indicatorColor);
+    paint.setStyle(Style.FILL);
+    paint.setAntiAlias(true);
+
+    activeIndicator.color = baseSpec.indicatorColors[0];
+    if (baseSpec.indicatorTrackGapSize > 0) {
+      // Recalculates the gap size, so that it's proportional to the progress when the progress is
+      // below the threshold. For the linear type, this calculation is handled in the
+      // LinearDrawingDelegate.
+      int gapSize =
+          drawingDelegate instanceof LinearDrawingDelegate
+              ? baseSpec.indicatorTrackGapSize
+              : (int)
+                  (baseSpec.indicatorTrackGapSize
+                      * MathUtils.clamp(getIndicatorFraction(), 0f, GAP_RAMP_DOWN_THRESHOLD)
+                      / GAP_RAMP_DOWN_THRESHOLD);
+      drawingDelegate.fillTrack(
+          canvas,
+          paint,
+          getIndicatorFraction(),
+          /* endFraction= */ 1f,
+          baseSpec.trackColor,
+          getAlpha(),
+          gapSize);
+    } else {
+      drawingDelegate.fillTrack(
+          canvas,
+          paint,
+          /* startFraction= */ 0f,
+          /* endFraction= */ 1f,
+          baseSpec.trackColor,
+          getAlpha(),
+          /* gapSize= */ 0);
+    }
+    drawingDelegate.fillIndicator(canvas, paint, activeIndicator, getAlpha());
+    drawingDelegate.drawStopIndicator(canvas, paint, baseSpec.indicatorColors[0], getAlpha());
     canvas.restore();
   }
 
   // ******************* Getters and setters *******************
 
   private float getIndicatorFraction() {
-    return indicatorFraction;
+    return activeIndicator.endFraction;
   }
 
   private void setIndicatorFraction(float indicatorFraction) {
-    this.indicatorFraction = indicatorFraction;
+    activeIndicator.endFraction = indicatorFraction;
     invalidateSelf();
   }
 
@@ -224,20 +292,19 @@ public final class DeterminateDrawable<S extends BaseProgressIndicatorSpec>
 
   void setDrawingDelegate(@NonNull DrawingDelegate<S> drawingDelegate) {
     this.drawingDelegate = drawingDelegate;
-    drawingDelegate.registerDrawable(this);
   }
 
   // ******************* Properties *******************
 
-  private static final FloatPropertyCompat<DeterminateDrawable> INDICATOR_LENGTH_IN_LEVEL =
-      new FloatPropertyCompat<DeterminateDrawable>("indicatorLevel") {
+  private static final FloatPropertyCompat<DeterminateDrawable<?>> INDICATOR_LENGTH_IN_LEVEL =
+      new FloatPropertyCompat<DeterminateDrawable<?>>("indicatorLevel") {
         @Override
-        public float getValue(DeterminateDrawable drawable) {
+        public float getValue(DeterminateDrawable<?> drawable) {
           return drawable.getIndicatorFraction() * MAX_DRAWABLE_LEVEL;
         }
 
         @Override
-        public void setValue(DeterminateDrawable drawable, float value) {
+        public void setValue(DeterminateDrawable<?> drawable, float value) {
           drawable.setIndicatorFraction(value / MAX_DRAWABLE_LEVEL);
         }
       };

@@ -126,6 +126,11 @@ import java.util.List;
  * after the layout has been invalidated so you need to ensure that initial rendering has the
  * correct layout.
  *
+ * <p>For more information, see the <a
+ * href="https://github.com/material-components/material-components-android/blob/master/docs/components/Chip.md">component
+ * developer guidance</a> and <a href="https://material.io/components/chips/overview">design
+ * guidelines</a>.
+ *
  * @see ChipDrawable
  */
 public class Chip extends AppCompatCheckBox
@@ -968,7 +973,7 @@ public class Chip extends AppCompatCheckBox
     if (getCloseIconTouchBounds().contains(event.getX(), event.getY()) && isEnabled()) {
       return PointerIcon.getSystemIcon(getContext(), PointerIcon.TYPE_HAND);
     }
-    return null;
+    return super.onResolvePointerIcon(event, pointerIndex);
   }
 
   /** @hide */

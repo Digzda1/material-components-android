@@ -16,11 +16,17 @@ information and actions related to the current screen.
 
 **Contents**
 
+*   [Design & API Documentation](#design-api-documentation)
 *   [Using top app bars](#using-top-app-bars)
 *   [Regular top app bars](#regular-top-app-bars)
 *   [Collapsing top app bar](#collapsing-top-app-bars)
 *   [Contextual action bar](#contextual-action-bar)
 *   [Theming](#theming-the-top-app-bar)
+
+## Design & API Documentation
+
+*   [Google Material3 Spec](https://material.io/components/top-app-bar/overview)
+*   [API Reference](https://developer.android.com/reference/com/google/android/material/appbar/package-summary)
 
 ## Using top app bars
 
@@ -78,7 +84,7 @@ types can be grouped into [Collapsing top app bars](#collapsing-top-app-bars).
 
 ![Types of top app bars](assets/topappbar/topappbar_types.png)
 
-Top app bars use the following APIs and source code:
+API and source code:
 
 *   `CoordinatorLayout`
     *   [Class definition](https://developer.android.com/reference/androidx/coordinatorlayout/widget/CoordinatorLayout)
@@ -119,7 +125,8 @@ In the layout:
         <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/topAppBar"
             android:layout_width="match_parent"
-            android:layout_height="?attr/actionBarSize"
+            android:layout_height="wrap_content"
+            android:minHeight="?attr/actionBarSize"
             app:title="@string/page_title"
             app:menu="@menu/top_app_bar"
             app:navigationIcon="@drawable/ic_close_24dp" />
@@ -138,6 +145,11 @@ In the layout:
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
 ```
+
+**Note:** In order to allow your Top App Bar to grow taller when the system font
+setting increases, you can use `android:layout_height="wrap_content"` +
+`android:minHeight="?attr/actionBarSize"` on your `MaterialToolbar`, as shown in
+the example above.
 
 In `@menu/top_app_bar.xml`:
 
@@ -266,6 +278,34 @@ In the layout:
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
 ```
 
+Optionally, you can change the style in which the app bar disappears and
+appears when scrolling by setting a scroll effect. By default, a scroll effect
+of `none` is set which translates the app bar in-step with the scrolling
+content. The following option shows setting the `compress` scroll effect
+which clips the top app bar until it meets the top of the screen:
+
+In the layout:
+
+```xml
+<androidx.coordinatorlayout.widget.CoordinatorLayout
+    ...>
+
+    <com.google.android.material.appbar.AppBarLayout
+        ...>
+
+        <com.google.android.material.appbar.MaterialToolbar
+            ...
+            app:layout_scrollFlags="scroll|enterAlways|snap"
+            app:layout_scrollEffect="compress"
+            />
+
+    </com.google.android.material.appbar.AppBarLayout>
+
+    ...
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>
+```
+
 ### Status bar and edge-to-edge
 
 ![Small top app bar with edge-to-edge status bar](assets/topappbar/topappbar_small.png)
@@ -288,9 +328,18 @@ background.
 
 In code:
 
+```kt
+appBarLayout.statusBarForeground =
+    MaterialShapeDrawable.createWithElevationOverlay(context)
 ```
-appBarLayout.setStatusBarForeground(
-    MaterialShapeDrawable.createWithElevationOverlay(getContext()));
+
+Or if using Tonal Surface Colors instead of Elevation Overlays, you can simply
+set the `statusBarForeground` to `colorSurface` to let `AppBarLayout`
+automatically match the status bar color to its own background:
+
+```kt
+appBarLayout.setStatusBarForegroundColor(
+    MaterialColors.getColor(appBarLayout, R.attr.colorSurface))
 ```
 
 ### Center aligned top app bar example
@@ -373,7 +422,9 @@ Element                                                         | Attribute     
 **`CollapsingToolbarLayout` scrim animation duration**          | `app:scrimAnimationDuration`    | `setScrimAnimationDuration`<br>`getScrimAnimationDuration`                                            | `600`
 **`CollapsingToolbarLayout` collapsing animation interpolator** | `app:titlePositionInterpolator` | `setTitlePositionInterpolator`                                                                        | `@null`
 **`AppBarLayout` lift on scroll**                               | `app:liftOnScroll`              | `setLiftOnScroll`<br>`isLiftOnScroll`                                                                 | `true`
+**`AppBarLayout` lift on scroll color**                         | `app:liftOnScrollColor`         | N/A                                                                                                   | `?attr/colorSurfaceContainer`
 **`AppBarLayout` lift on scroll target view**                   | `app:liftOnScrollTargetViewId`  | `setLiftOnScrollTargetViewId`<br>`getLiftOnScrollTargetViewId`                                        | `@null`
+**`AppBarLayout` scroll effect**                                | `app:layout_scrollEffect`       | `setScrollEffect`<br>`getScrollEffect`                                                                | `none`
 
 #### `AppBarLayout` styles
 
@@ -445,6 +496,8 @@ In the layout:
 
             <com.google.android.material.appbar.MaterialToolbar
                 ...
+                android:layout_width="match_parent"
+                android:layout_height="?attr/actionBarSize"
                 android:elevation="0dp" />
 
         </com.google.android.material.appbar.CollapsingToolbarLayout>
@@ -482,6 +535,8 @@ In the layout:
             android:layout_height="?attr/collapsingToolbarLayoutLargeSize">
 
             <com.google.android.material.appbar.MaterialToolbar
+                android:layout_width="match_parent"
+                android:layout_height="?attr/actionBarSize"
                 ...
                 android:elevation="0dp" />
 
@@ -529,6 +584,8 @@ In the layout:
                 android:contentDescription="@string/content_description_media" />
 
             <com.google.android.material.appbar.MaterialToolbar
+                android:layout_width="match_parent"
+                android:layout_height="?attr/actionBarSize"
                 ...
                 android:background="@android:color/transparent" />
 
@@ -572,6 +629,7 @@ In the layout:
 
             <com.google.android.material.appbar.MaterialToolbar
                 ...
+                android:layout_height="?attr/actionBarSize"
                 app:layout_collapseMode="pin"
                 />
 

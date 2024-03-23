@@ -16,14 +16,25 @@
 
 package com.google.android.material.color;
 
+
 import android.app.Activity;
+import android.graphics.Bitmap;
+import androidx.annotation.ColorInt;
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.annotation.StyleRes;
 import com.google.android.material.color.DynamicColors.OnAppliedCallback;
 import com.google.android.material.color.DynamicColors.Precondition;
+import com.google.android.material.color.utilities.QuantizerCelebi;
+import com.google.android.material.color.utilities.Score;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 
-/** Wrapper class for specifying dynamic colors options when applying dynamic colors. */
+/**
+ * Wrapper class for specifying dynamic colors options when applying dynamic colors. Clients have
+ * the options to provide a custom theme overlay, set the precondition that decides if dynamic
+ * colors should be applied, set the callback method and/or set the color source image to apply
+ * content-based dynamic colors.
+ */
 public class DynamicColorsOptions {
 
   private static final Precondition ALWAYS_ALLOW =
@@ -43,11 +54,17 @@ public class DynamicColorsOptions {
   @StyleRes private final int themeOverlay;
   @NonNull private final Precondition precondition;
   @NonNull private final OnAppliedCallback onAppliedCallback;
+  @Nullable private Integer contentBasedSeedColor;
 
   private DynamicColorsOptions(Builder builder) {
     this.themeOverlay = builder.themeOverlay;
     this.precondition = builder.precondition;
     this.onAppliedCallback = builder.onAppliedCallback;
+    if (builder.contentBasedSourceColor != null) {
+      this.contentBasedSeedColor = builder.contentBasedSourceColor;
+    } else if (builder.contentBasedSourceBitmap != null) {
+      this.contentBasedSeedColor = extractSeedColorFromImage(builder.contentBasedSourceBitmap);
+    }
   }
 
   /** Returns the resource ID of the theme overlay that provides dynamic color definition. */
@@ -68,12 +85,20 @@ public class DynamicColorsOptions {
     return onAppliedCallback;
   }
 
+  /** Returns the seed color extracted from the color source image. */
+  @Nullable
+  public Integer getContentBasedSeedColor() {
+    return contentBasedSeedColor;
+  }
+
   /** Builder class for specifying options when applying dynamic colors. */
   public static class Builder {
 
     @StyleRes private int themeOverlay;
     @NonNull private Precondition precondition = ALWAYS_ALLOW;
     @NonNull private OnAppliedCallback onAppliedCallback = NO_OP_CALLBACK;
+    @Nullable private Bitmap contentBasedSourceBitmap;
+    @Nullable private Integer contentBasedSourceColor;
 
     /** Sets the resource ID of the theme overlay that provides dynamic color definition. */
     @NonNull
@@ -99,9 +124,44 @@ public class DynamicColorsOptions {
       return this;
     }
 
+    /**
+     * Sets the content based source image from which to extract the seed color for the Material
+     * color palette. Calling this method will clear any source color previously set with
+     * #setContentBasedSource(int).
+     *
+     */
+    @NonNull
+    @CanIgnoreReturnValue
+    public Builder setContentBasedSource(@NonNull Bitmap contentBasedSource) {
+      this.contentBasedSourceBitmap = contentBasedSource;
+      this.contentBasedSourceColor = null;
+      return this;
+    }
+
+    /**
+     * Sets the content based source color to generate Material color palette. Calling this method
+     * will clear any source bitmap previously set with #setContentBasedSource(Bitmap).
+     *
+     */
+    @NonNull
+    @CanIgnoreReturnValue
+    public Builder setContentBasedSource(@ColorInt int contentBasedSource) {
+      this.contentBasedSourceBitmap = null;
+      this.contentBasedSourceColor = contentBasedSource;
+      return this;
+    }
+
     @NonNull
     public DynamicColorsOptions build() {
       return new DynamicColorsOptions(this);
     }
+  }
+
+  private static int extractSeedColorFromImage(Bitmap bitmap) {
+    int width = bitmap.getWidth();
+    int height = bitmap.getHeight();
+    int[] bitmapPixels = new int[width * height];
+    bitmap.getPixels(bitmapPixels, /* offset= */ 0, width, /* x= */ 0, /* y= */ 0, width, height);
+    return Score.score(QuantizerCelebi.quantize(bitmapPixels, 128)).get(0);
   }
 }

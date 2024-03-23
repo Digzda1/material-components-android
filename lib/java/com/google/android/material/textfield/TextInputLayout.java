@@ -57,6 +57,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewStructure;
+import android.view.ViewTreeObserver.OnGlobalLayoutListener;
 import android.view.accessibility.AccessibilityEvent;
 import android.widget.AutoCompleteTextView;
 import android.widget.EditText;
@@ -73,6 +74,7 @@ import androidx.annotation.IntRange;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.Px;
+import androidx.annotation.RequiresApi;
 import androidx.annotation.RestrictTo;
 import androidx.annotation.StringRes;
 import androidx.annotation.StyleRes;
@@ -98,6 +100,8 @@ import com.google.android.material.internal.ThemeEnforcement;
 import com.google.android.material.internal.ViewUtils;
 import com.google.android.material.motion.MotionUtils;
 import com.google.android.material.resources.MaterialResources;
+import com.google.android.material.shape.CornerFamily;
+import com.google.android.material.shape.CornerTreatment;
 import com.google.android.material.shape.MaterialShapeDrawable;
 import com.google.android.material.shape.ShapeAppearanceModel;
 import java.lang.annotation.Retention;
@@ -173,10 +177,10 @@ import java.util.LinkedHashSet;
  * TextInputLayout#setHint(CharSequence)} and {@link TextInputLayout#getHint()} on TextInputLayout,
  * instead of on EditText.
  *
- * If you construct the {@link TextInputEditText} child of a {@link TextInputLayout}
- * programmatically, you should use {@link TextInputLayout}'s `context` to create the view. This
- * will allow {@link TextInputLayout} to pass along the appropriate styling to the
- * {@link TextInputEditText}.
+ * <p>If you construct the {@link TextInputEditText} child of a {@link TextInputLayout}
+ * programmatically, you should use {@link TextInputLayout}'s {@code context} to create the view.
+ * This will allow {@link TextInputLayout} to pass along the appropriate styling to the {@link
+ * TextInputEditText}.
  *
  * <p>If the {@link EditText} child is not a {@link TextInputEditText}, make sure to set the {@link
  * EditText}'s {@code android:background} to {@code null} when using an outlined or filled text
@@ -185,19 +189,24 @@ import java.util.LinkedHashSet;
  *
  * <p><strong>Note:</strong> The actual view hierarchy present under TextInputLayout is
  * <strong>NOT</strong> guaranteed to match the view hierarchy as written in XML. As a result, calls
- * to getParent() on children of the TextInputLayout -- such as a TextInputEditText -- may not
- * return the TextInputLayout itself, but rather an intermediate View. If you need to access a View
- * directly, set an {@code android:id} and use {@link View#findViewById(int)}.
+ * to {@code getParent()} on children of the TextInputLayout -- such as a TextInputEditText -- may
+ * not return the TextInputLayout itself, but rather an intermediate View. If you need to access a
+ * View directly, set an {@code android:id} and use {@link View#findViewById(int)}.
+ *
+ * <p>For more information, see the <a
+ * href="https://github.com/material-components/material-components-android/blob/master/docs/components/TextField.md">component
+ * developer guidance</a> and <a href="https://material.io/components/text-fields/overview">design
+ * guidelines</a>.
  */
-public class TextInputLayout extends LinearLayout {
+public class TextInputLayout extends LinearLayout implements OnGlobalLayoutListener {
 
   private static final int DEF_STYLE_RES = R.style.Widget_Design_TextInputLayout;
 
   /** Duration for the label's scale up and down animations. */
   private static final int LABEL_SCALE_ANIMATION_DURATION = 167;
 
-  private static final long PLACEHOLDER_FADE_DURATION = 87;
-  private static final long PLACEHOLDER_START_DELAY = 67;
+  private static final int DEFAULT_PLACEHOLDER_FADE_DURATION = 87;
+  private static final int PLACEHOLDER_START_DELAY = 67;
 
   private static final int INVALID_MAX_LENGTH = -1;
   private static final int NO_WIDTH = -1;
@@ -255,6 +264,9 @@ public class TextInputLayout extends LinearLayout {
 
   @Nullable private ColorStateList counterTextColor;
   @Nullable private ColorStateList counterOverflowTextColor;
+
+  @Nullable private ColorStateList cursorColor;
+  @Nullable private ColorStateList cursorErrorColor;
 
   private boolean hintEnabled;
   private CharSequence hint;
@@ -428,6 +440,8 @@ public class TextInputLayout extends LinearLayout {
 
   @ColorInt private int disabledColor;
 
+  int originalEditTextMinimumHeight;
+
   // Only used for testing
   private boolean hintExpanded;
 
@@ -440,6 +454,8 @@ public class TextInputLayout extends LinearLayout {
   private boolean inDrawableStateChanged;
 
   private boolean restoringSavedState;
+
+  private boolean globalLayoutListenerAdded = false;
 
   public TextInputLayout(@NonNull Context context) {
     this(context, null);
@@ -608,10 +624,17 @@ public class TextInputLayout extends LinearLayout {
       setHintTextAppearance(a.getResourceId(R.styleable.TextInputLayout_hintTextAppearance, 0));
     }
 
+    cursorColor = a.getColorStateList(R.styleable.TextInputLayout_cursorColor);
+    cursorErrorColor = a.getColorStateList(R.styleable.TextInputLayout_cursorErrorColor);
+
     final int errorTextAppearance =
         a.getResourceId(R.styleable.TextInputLayout_errorTextAppearance, 0);
     final CharSequence errorContentDescription =
         a.getText(R.styleable.TextInputLayout_errorContentDescription);
+    final int errorAccessibilityLiveRegion =
+        a.getInt(
+            R.styleable.TextInputLayout_errorAccessibilityLiveRegion,
+            ViewCompat.ACCESSIBILITY_LIVE_REGION_POLITE);
     final boolean errorEnabled = a.getBoolean(R.styleable.TextInputLayout_errorEnabled, false);
 
     final int helperTextTextAppearance =
@@ -634,6 +657,7 @@ public class TextInputLayout extends LinearLayout {
         a.getInt(R.styleable.TextInputLayout_boxBackgroundMode, BOX_BACKGROUND_NONE));
 
     setErrorContentDescription(errorContentDescription);
+    setErrorAccessibilityLiveRegion(errorAccessibilityLiveRegion);
 
     setCounterOverflowTextAppearance(counterOverflowTextAppearance);
     setHelperTextTextAppearance(helperTextTextAppearance);
@@ -694,6 +718,21 @@ public class TextInputLayout extends LinearLayout {
     setCounterEnabled(counterEnabled);
 
     setHelperText(helperText);
+  }
+
+  @Override
+  public void onGlobalLayout() {
+    if (VERSION.SDK_INT < VERSION_CODES.JELLY_BEAN) {
+      endLayout.getViewTreeObserver().removeGlobalOnLayoutListener(this);
+    } else {
+      endLayout.getViewTreeObserver().removeOnGlobalLayoutListener(this);
+    }
+    globalLayoutListenerAdded = false;
+    boolean updatedHeight = updateEditTextHeightBasedOnIcon();
+    boolean updatedIcon = updateDummyDrawables();
+    if (updatedHeight || updatedIcon) {
+      editText.post(() -> editText.requestLayout());
+    }
   }
 
   @Override
@@ -783,7 +822,7 @@ public class TextInputLayout extends LinearLayout {
         break;
       case BOX_BACKGROUND_OUTLINE:
         if (hintEnabled && !(boxBackground instanceof CutoutDrawable)) {
-          boxBackground = new CutoutDrawable(shapeAppearanceModel);
+          boxBackground = CutoutDrawable.create(shapeAppearanceModel);
         } else {
           boxBackground = new MaterialShapeDrawable(shapeAppearanceModel);
         }
@@ -809,8 +848,28 @@ public class TextInputLayout extends LinearLayout {
         || boxBackgroundMode == BOX_BACKGROUND_NONE) {
       return;
     }
-    ViewCompat.setBackground(editText, getEditTextBoxBackground());
+    updateEditTextBoxBackground();
     boxBackgroundApplied = true;
+  }
+
+  private void updateEditTextBoxBackground() {
+    Drawable editTextBoxBackground = getEditTextBoxBackground();
+
+    // On pre-Lollipop, setting a LayerDrawable as a background always replaces the original view
+    // paddings with its own, so we preserve the original paddings and restore them after setting
+    // a new background.
+    if (VERSION.SDK_INT < VERSION_CODES.LOLLIPOP
+        && editTextBoxBackground instanceof LayerDrawable) {
+      int paddingLeft = editText.getPaddingLeft();
+      int paddingTop = editText.getPaddingTop();
+      int paddingRight = editText.getPaddingRight();
+      int paddingBottom = editText.getPaddingBottom();
+
+      ViewCompat.setBackground(editText, editTextBoxBackground);
+      editText.setPadding(paddingLeft, paddingTop, paddingRight, paddingBottom);
+    } else {
+      ViewCompat.setBackground(editText, editTextBoxBackground);
+    }
   }
 
   @Nullable
@@ -924,7 +983,7 @@ public class TextInputLayout extends LinearLayout {
         editText instanceof MaterialAutoCompleteTextView
             ? ((MaterialAutoCompleteTextView) editText).getPopupElevation()
             : getResources().getDimensionPixelOffset(
-                R.dimen.mtrl_exposed_dropdown_menu_popup_elevation);
+                R.dimen.m3_comp_outlined_autocomplete_menu_container_elevation);
     int verticalPadding =
         getResources()
             .getDimensionPixelOffset(R.dimen.mtrl_exposed_dropdown_menu_popup_vertical_padding);
@@ -935,8 +994,16 @@ public class TextInputLayout extends LinearLayout {
             .setBottomLeftCornerSize(cornerRadius)
             .setBottomRightCornerSize(cornerRadius)
             .build();
+
+    ColorStateList dropDownBackgroundTint = null;
+    if (editText instanceof MaterialAutoCompleteTextView) {
+      MaterialAutoCompleteTextView materialAutoCompleteTextView =
+          ((MaterialAutoCompleteTextView) editText);
+      dropDownBackgroundTint = materialAutoCompleteTextView.getDropDownBackgroundTintList();
+    }
     MaterialShapeDrawable popupDrawable =
-        MaterialShapeDrawable.createWithElevationOverlay(getContext(), elevation);
+        MaterialShapeDrawable.createWithElevationOverlay(
+            getContext(), elevation, dropDownBackgroundTint);
     popupDrawable.setShapeAppearanceModel(shapeAppearanceModel);
     popupDrawable.setPadding(0, verticalPadding, 0, verticalPadding);
     return popupDrawable;
@@ -1221,6 +1288,46 @@ public class TextInputLayout extends LinearLayout {
   }
 
   /**
+   * Sets the {@link ShapeAppearanceModel} of the text field's box background.
+   *
+   * @param shapeAppearanceModel the desired shape appearance model.
+   * @see #getShapeAppearanceModel()
+   */
+  public void setShapeAppearanceModel(@NonNull ShapeAppearanceModel shapeAppearanceModel) {
+    if (boxBackground != null && boxBackground.getShapeAppearanceModel() != shapeAppearanceModel) {
+      this.shapeAppearanceModel = shapeAppearanceModel;
+      applyBoxAttributes();
+    }
+  }
+
+  /**
+   * Returns the {@link ShapeAppearanceModel} of the text field's box background.
+   *
+   * @see #setShapeAppearanceModel(ShapeAppearanceModel)
+   */
+  @NonNull
+  public ShapeAppearanceModel getShapeAppearanceModel() {
+    return shapeAppearanceModel;
+  }
+
+  /**
+   * Sets the box's corner family for all corners of the text field.
+   *
+   * @param cornerFamily the {@link CornerFamily} to be used. May be one of {@link
+   *     CornerFamily#ROUNDED} or {@link CornerFamily#CUT}.
+   */
+  public void setBoxCornerFamily(@CornerFamily int cornerFamily) {
+    shapeAppearanceModel =
+        shapeAppearanceModel.toBuilder()
+            .setTopLeftCorner(cornerFamily, shapeAppearanceModel.getTopLeftCornerSize())
+            .setTopRightCorner(cornerFamily, shapeAppearanceModel.getTopRightCornerSize())
+            .setBottomLeftCorner(cornerFamily, shapeAppearanceModel.getBottomLeftCornerSize())
+            .setBottomRightCorner(cornerFamily, shapeAppearanceModel.getBottomRightCornerSize())
+            .build();
+    applyBoxAttributes();
+  }
+
+  /**
    * Set the resources used for the box's corner radii.
    *
    * @param boxCornerRadiusTopStartId the resource to use for the box's top start corner radius
@@ -1457,9 +1564,13 @@ public class TextInputLayout extends LinearLayout {
         Gravity.TOP | (editTextGravity & ~Gravity.VERTICAL_GRAVITY_MASK));
     collapsingTextHelper.setExpandedTextGravity(editTextGravity);
 
+    originalEditTextMinimumHeight = ViewCompat.getMinimumHeight(editText);
+
     // Add a TextWatcher so that we know when the text input has changed.
     this.editText.addTextChangedListener(
         new TextWatcher() {
+          int previousLineCount = editText.getLineCount();
+
           @Override
           public void afterTextChanged(@NonNull Editable s) {
             updateLabelState(!restoringSavedState);
@@ -1468,6 +1579,14 @@ public class TextInputLayout extends LinearLayout {
             }
             if (placeholderEnabled) {
               updatePlaceholderText(s);
+            }
+            int currentLineCount = editText.getLineCount();
+            if (currentLineCount != previousLineCount) {
+              if (currentLineCount < previousLineCount
+                  && ViewCompat.getMinimumHeight(editText) != originalEditTextMinimumHeight) {
+                editText.setMinimumHeight(originalEditTextMinimumHeight);
+              }
+              previousLineCount = currentLineCount;
             }
           }
 
@@ -1493,6 +1612,10 @@ public class TextInputLayout extends LinearLayout {
         this.editText.setHint(null);
       }
       this.isProvidingHint = true;
+    }
+
+    if (VERSION.SDK_INT >= VERSION_CODES.Q) {
+      updateCursorColor();
     }
 
     if (counterView != null) {
@@ -1551,8 +1674,7 @@ public class TextInputLayout extends LinearLayout {
 
     // Set the expanded and collapsed labels to the default text color.
     if (defaultHintTextColor != null) {
-      collapsingTextHelper.setCollapsedTextColor(defaultHintTextColor);
-      collapsingTextHelper.setExpandedTextColor(defaultHintTextColor);
+      collapsingTextHelper.setCollapsedAndExpandedTextColor(defaultHintTextColor);
     }
 
     // Set the collapsed and expanded label text colors based on the current state.
@@ -1562,12 +1684,13 @@ public class TextInputLayout extends LinearLayout {
               ? defaultHintTextColor.getColorForState(
                   new int[] {-android.R.attr.state_enabled}, disabledColor)
               : disabledColor;
-      collapsingTextHelper.setCollapsedTextColor(ColorStateList.valueOf(disabledHintColor));
-      collapsingTextHelper.setExpandedTextColor(ColorStateList.valueOf(disabledHintColor));
+      collapsingTextHelper.setCollapsedAndExpandedTextColor(
+          ColorStateList.valueOf(disabledHintColor));
     } else if (shouldShowError()) {
-      collapsingTextHelper.setCollapsedTextColor(indicatorViewController.getErrorViewTextColors());
+      collapsingTextHelper.setCollapsedAndExpandedTextColor(
+          indicatorViewController.getErrorViewTextColors());
     } else if (counterOverflowed && counterView != null) {
-      collapsingTextHelper.setCollapsedTextColor(counterView.getTextColors());
+      collapsingTextHelper.setCollapsedAndExpandedTextColor(counterView.getTextColors());
     } else if (hasFocus && focusedTextColor != null) {
       collapsingTextHelper.setCollapsedTextColor(focusedTextColor);
     } // If none of these states apply, leave the expanded and collapsed colors as they are.
@@ -2030,6 +2153,25 @@ public class TextInputLayout extends LinearLayout {
   }
 
   /**
+   * Sets an accessibility live region for the error message.
+   *
+   * @param errorAccessibilityLiveRegion Accessibility live region to set
+   * @attr ref com.google.android.material.R.styleable#TextInputLayout_errorAccessibilityLiveRegion
+   */
+  public void setErrorAccessibilityLiveRegion(final int errorAccessibilityLiveRegion) {
+    indicatorViewController.setErrorAccessibilityLiveRegion(errorAccessibilityLiveRegion);
+  }
+
+  /**
+   * Returns the accessibility live region of the error message.
+   *
+   * @see #setErrorAccessibilityLiveRegion(int)
+   */
+  public int getErrorAccessibilityLiveRegion() {
+    return indicatorViewController.getErrorAccessibilityLiveRegion();
+  }
+
+  /**
    * Sets an error message that will be displayed below our {@link EditText}. If the {@code error}
    * is {@code null}, the error message will be cleared.
    *
@@ -2217,7 +2359,7 @@ public class TextInputLayout extends LinearLayout {
    */
   @Nullable
   public ColorStateList getCounterOverflowTextColor() {
-    return counterTextColor;
+    return counterOverflowTextColor;
   }
 
   /**
@@ -2364,8 +2506,10 @@ public class TextInputLayout extends LinearLayout {
 
   private Fade createPlaceholderFadeTransition() {
     Fade placeholderFadeTransition = new Fade();
-    placeholderFadeTransition.setDuration(PLACEHOLDER_FADE_DURATION);
-    placeholderFadeTransition.setInterpolator(AnimationUtils.LINEAR_INTERPOLATOR);
+    placeholderFadeTransition.setDuration(MotionUtils.resolveThemeDuration(getContext(),
+        R.attr.motionDurationShort2, DEFAULT_PLACEHOLDER_FADE_DURATION));
+    placeholderFadeTransition.setInterpolator(MotionUtils.resolveThemeInterpolator(getContext(),
+        R.attr.motionEasingLinearInterpolator, AnimationUtils.LINEAR_INTERPOLATOR));
     return placeholderFadeTransition;
   }
 
@@ -2460,6 +2604,80 @@ public class TextInputLayout extends LinearLayout {
   @StyleRes
   public int getPlaceholderTextAppearance() {
     return placeholderTextAppearance;
+  }
+
+  /**
+   * Sets the cursor color. Using this method will take precedence over using the
+   * value of {@code ?attr/colorControlActivated}.
+   *
+   * <p>Note: This method only has effect on API levels 28+. On lower API levels
+   * {@code ?attr/colorControlActivated} will be used for the cursor color.
+   *
+   * @param cursorColor the cursor color to be set
+   * @see #getCursorColor
+   * @see #setCursorErrorColor
+   * @attr ref com.google.android.material.R.styleable#TextInputLayout_cursorColor
+   */
+  @RequiresApi(VERSION_CODES.Q)
+  public void setCursorColor(@Nullable ColorStateList cursorColor) {
+    if (this.cursorColor != cursorColor) {
+      this.cursorColor = cursorColor;
+      updateCursorColor();
+    }
+  }
+
+  /**
+   * Returns the cursor color. It will return the value of {@code app:cursorColor} if set, or
+   * <code>null</code> otherwise.
+   *
+   * <p>Note: This value only has effect on API levels 28+. On lower API levels
+   * {@code ?attr/colorControlActivated} will be used for the cursor color.
+   *
+   * @see #setCursorColor
+   * @attr ref com.google.android.material.R.styleable#TextInputLayout_cursorColor
+   */
+  @Nullable
+  @RequiresApi(VERSION_CODES.Q)
+  public ColorStateList getCursorColor() {
+    return cursorColor;
+  }
+
+  /**
+   * Sets the cursor color when an error is being displayed. If null, the cursor doesn't change its
+   * color when the text field is in an error state.
+   *
+   * <p>Note: This method only has effect on API levels 28+. On lower API levels
+   * {@code ?attr/colorControlActivated} will be used for the cursor color.
+   *
+   * @param cursorErrorColor the error color to use for the cursor
+   * @see #getCursorErrorColor
+   * @see #setCursorColor
+   * @see #setError(CharSequence)
+   * @attr ref com.google.android.material.R.styleable#TextInputLayout_cursorErrorColor
+   */
+  @RequiresApi(VERSION_CODES.Q)
+  public void setCursorErrorColor(@Nullable ColorStateList cursorErrorColor) {
+    if (this.cursorErrorColor != cursorErrorColor) {
+      this.cursorErrorColor = cursorErrorColor;
+      if (isOnError()) {
+        updateCursorColor();
+      }
+    }
+  }
+
+  /**
+   * Returns the cursor error color.
+   *
+   * <p>Note: This value only has effect on API levels 28+. On lower API levels
+   * {@code ?attr/colorControlActivated} will be used for the cursor color.
+   *
+   * @see #setCursorErrorColor
+   * @attr ref com.google.android.material.R.styleable#TextInputLayout_cursorErrorColor
+   */
+  @Nullable
+  @RequiresApi(VERSION_CODES.Q)
+  public ColorStateList getCursorErrorColor() {
+    return cursorErrorColor;
   }
 
   /**
@@ -2701,35 +2919,37 @@ public class TextInputLayout extends LinearLayout {
         bounds.right = rect.right - editText.getPaddingRight();
         return bounds;
       case BOX_BACKGROUND_FILLED:
-        bounds.left = getLabelLeftBoundAlightWithPrefix(rect.left, isRtl);
+        bounds.left = getLabelLeftBoundAlignedWithPrefixAndSuffix(rect.left, isRtl);
         bounds.top = rect.top + boxCollapsedPaddingTopPx;
-        bounds.right = getLabelRightBoundAlignedWithSuffix(rect.right, isRtl);
+        bounds.right = getLabelRightBoundAlignedWithPrefixAndSuffix(rect.right, isRtl);
         return bounds;
       case BOX_BACKGROUND_NONE:
       default:
-        bounds.left = getLabelLeftBoundAlightWithPrefix(rect.left, isRtl);
+        bounds.left = getLabelLeftBoundAlignedWithPrefixAndSuffix(rect.left, isRtl);
         bounds.top = getPaddingTop();
-        bounds.right = getLabelRightBoundAlignedWithSuffix(rect.right, isRtl);
+        bounds.right = getLabelRightBoundAlignedWithPrefixAndSuffix(rect.right, isRtl);
         return bounds;
     }
   }
 
-  private int getLabelLeftBoundAlightWithPrefix(int rectLeft, boolean isRtl) {
-    int left = rectLeft + editText.getCompoundPaddingLeft();
-    if (getPrefixText() != null && !isRtl) {
-      // Label should be vertically aligned with prefix
-      left = left - getPrefixTextView().getMeasuredWidth() + getPrefixTextView().getPaddingLeft();
+  private int getLabelLeftBoundAlignedWithPrefixAndSuffix(int rectLeft, boolean isRtl) {
+    if (!isRtl && getPrefixText() != null) {
+      return rectLeft + startLayout.getPrefixTextStartOffset();
     }
-    return left;
+    if (isRtl && getSuffixText() != null) {
+      return rectLeft + endLayout.getSuffixTextEndOffset();
+    }
+    return rectLeft + editText.getCompoundPaddingLeft();
   }
 
-  private int getLabelRightBoundAlignedWithSuffix(int rectRight, boolean isRtl) {
-    int right = rectRight - editText.getCompoundPaddingRight();
-    if (getPrefixText() != null && isRtl) {
-      // Label should be vertically aligned with prefix if in RTL
-      right += getPrefixTextView().getMeasuredWidth() - getPrefixTextView().getPaddingRight();
+  private int getLabelRightBoundAlignedWithPrefixAndSuffix(int rectRight, boolean isRtl) {
+    if (!isRtl && getSuffixText() != null) {
+      return rectRight - endLayout.getSuffixTextEndOffset();
     }
-    return right;
+    if (isRtl && getPrefixText() != null) {
+      return rectRight - startLayout.getPrefixTextStartOffset();
+    }
+    return rectRight - editText.getCompoundPaddingRight();
   }
 
   @NonNull
@@ -3040,9 +3260,8 @@ public class TextInputLayout extends LinearLayout {
   public void onRtlPropertiesChanged(int layoutDirection) {
     super.onRtlPropertiesChanged(layoutDirection);
     boolean isLayoutDirectionRtl = layoutDirection == ViewCompat.LAYOUT_DIRECTION_RTL;
-    if (isLayoutDirectionRtl != areCornerRadiiRtl) {
+   if (isLayoutDirectionRtl != areCornerRadiiRtl) {
       // Switch corner radius values from LTR to RTL or vice versa.
-      boolean shouldCornersBeRtl = isLayoutDirectionRtl && !areCornerRadiiRtl;
       float boxCornerRadiusTopLeft =
           shapeAppearanceModel.getTopLeftCornerSize().getCornerSize(tmpRectF);
       float boxCornerRadiusTopRight =
@@ -3051,28 +3270,38 @@ public class TextInputLayout extends LinearLayout {
           shapeAppearanceModel.getBottomLeftCornerSize().getCornerSize(tmpRectF);
       float boxCornerRadiusBottomRight =
           shapeAppearanceModel.getBottomRightCornerSize().getCornerSize(tmpRectF);
-      setBoxCornerRadii(
-          shouldCornersBeRtl ? boxCornerRadiusTopLeft : boxCornerRadiusTopRight,
-          shouldCornersBeRtl ? boxCornerRadiusTopRight : boxCornerRadiusTopLeft,
-          shouldCornersBeRtl ? boxCornerRadiusBottomLeft : boxCornerRadiusBottomRight,
-          shouldCornersBeRtl ? boxCornerRadiusBottomRight : boxCornerRadiusBottomLeft);
-    }
+      CornerTreatment topLeftTreatment =
+          shapeAppearanceModel.getTopLeftCorner();
+      CornerTreatment topRightTreatment =
+          shapeAppearanceModel.getTopRightCorner();
+      CornerTreatment bottomLeftTreatment =
+          shapeAppearanceModel.getBottomLeftCorner();
+      CornerTreatment bottomRightTreatment =
+          shapeAppearanceModel.getBottomRightCorner();
+
+      ShapeAppearanceModel newShapeAppearanceModel =
+          ShapeAppearanceModel.builder()
+              .setTopLeftCorner(topRightTreatment)
+              .setTopRightCorner(topLeftTreatment)
+              .setBottomLeftCorner(bottomRightTreatment)
+              .setBottomRightCorner(bottomLeftTreatment)
+              .setTopLeftCornerSize(boxCornerRadiusTopRight)
+              .setTopRightCornerSize(boxCornerRadiusTopLeft)
+              .setBottomLeftCornerSize(boxCornerRadiusBottomRight)
+              .setBottomRightCornerSize(boxCornerRadiusBottomLeft)
+              .build();
+     areCornerRadiiRtl = isLayoutDirectionRtl;
+     setShapeAppearanceModel(newShapeAppearanceModel);
+   }
   }
 
   @Override
   protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
     super.onMeasure(widthMeasureSpec, heightMeasureSpec);
 
-    boolean updatedHeight = updateEditTextHeightBasedOnIcon();
-    boolean updatedIcon = updateDummyDrawables();
-    if (updatedHeight || updatedIcon) {
-      editText.post(
-          new Runnable() {
-            @Override
-            public void run() {
-              editText.requestLayout();
-            }
-          });
+    if (!globalLayoutListenerAdded) {
+      endLayout.getViewTreeObserver().addOnGlobalLayoutListener(this);
+      globalLayoutListenerAdded = true;
     }
     updatePlaceholderMeasurementsBasedOnEditText();
     endLayout.updateSuffixTextViewPadding();
@@ -4170,6 +4399,10 @@ public class TextInputLayout extends LinearLayout {
       boxStrokeColor = defaultStrokeColor;
     }
 
+    if (VERSION.SDK_INT >= VERSION_CODES.Q) {
+      updateCursorColor();
+    }
+
     endLayout.onTextInputBoxStateUpdated();
 
     refreshStartIconDrawableState();
@@ -4207,6 +4440,10 @@ public class TextInputLayout extends LinearLayout {
     applyBoxAttributes();
   }
 
+  private boolean isOnError() {
+    return shouldShowError() || (counterView != null && counterOverflowed);
+  }
+
   private void updateStrokeErrorColor(boolean hasFocus, boolean isHovered) {
     int defaultStrokeErrorColor = strokeErrorColor.getDefaultColor();
     int hoveredStrokeErrorColor =
@@ -4224,6 +4461,24 @@ public class TextInputLayout extends LinearLayout {
     } else {
       boxStrokeColor = defaultStrokeErrorColor;
     }
+  }
+
+  @RequiresApi(VERSION_CODES.Q)
+  private void updateCursorColor() {
+    ColorStateList color = cursorColor != null
+        ? cursorColor
+        : MaterialColors.getColorStateListOrNull(getContext(), R.attr.colorControlActivated);
+
+    if (editText == null || editText.getTextCursorDrawable() == null) {
+      // If there's no cursor, return.
+      return;
+    }
+
+    Drawable cursorDrawable = DrawableCompat.wrap(editText.getTextCursorDrawable()).mutate();
+    if (isOnError() && cursorErrorColor != null) {
+      color = cursorErrorColor;
+    }
+    DrawableCompat.setTintList(cursorDrawable, color);
   }
 
   private void expandHint(boolean animate) {

@@ -63,7 +63,14 @@ import java.lang.annotation.RetentionPolicy;
 import java.util.LinkedHashSet;
 import java.util.Set;
 
-/** A {@link Dialog} with a clock display and a clock face to choose the time. */
+/**
+ * A {@link Dialog} with a clock display and a clock face to choose the time.
+ *
+ * <p>For more information, see the <a
+ * href="https://github.com/material-components/material-components-android/blob/master/docs/components/TimePicker.md">component
+ * developer guidance</a> and <a href="https://material.io/components/time-pickers/overview">design
+ * guidelines</a>.
+ */
 public final class MaterialTimePicker extends DialogFragment implements OnDoubleTapListener {
 
   private final Set<OnClickListener> positiveButtonListeners = new LinkedHashSet<>();
@@ -179,9 +186,6 @@ public final class MaterialTimePicker extends DialogFragment implements OnDouble
   public final Dialog onCreateDialog(@Nullable Bundle bundle) {
     Dialog dialog = new Dialog(requireContext(), getThemeResId());
     Context context = dialog.getContext();
-    int surfaceColor =
-        MaterialAttributes.resolveOrThrow(
-            context, R.attr.colorSurface, MaterialTimePicker.class.getCanonicalName());
 
     MaterialShapeDrawable background =
         new MaterialShapeDrawable(
@@ -199,11 +203,12 @@ public final class MaterialTimePicker extends DialogFragment implements OnDouble
 
     clockIcon = a.getResourceId(R.styleable.MaterialTimePicker_clockIcon, 0);
     keyboardIcon = a.getResourceId(R.styleable.MaterialTimePicker_keyboardIcon, 0);
+    int backgroundColor = a.getColor(R.styleable.MaterialTimePicker_backgroundTint, 0);
 
     a.recycle();
 
     background.initializeElevationOverlay(context);
-    background.setFillColor(ColorStateList.valueOf(surfaceColor));
+    background.setFillColor(ColorStateList.valueOf(backgroundColor));
     Window window = dialog.getWindow();
     window.setBackgroundDrawable(background);
     window.requestFeature(Window.FEATURE_NO_TITLE);
@@ -322,6 +327,21 @@ public final class MaterialTimePicker extends DialogFragment implements OnDouble
         });
 
     return root;
+  }
+
+  @Override
+  public void onViewCreated(@NonNull View view, @Nullable Bundle bundle) {
+    super.onViewCreated(view, bundle);
+    // TODO(b/246354286): Investigate issue with keyboard not showing on Android 12+
+    if (activePresenter instanceof TimePickerTextInputPresenter) {
+      view.postDelayed(
+          () -> {
+            if (activePresenter instanceof TimePickerTextInputPresenter) {
+              ((TimePickerTextInputPresenter) activePresenter).resetChecked();
+            }
+          },
+          100);
+    }
   }
 
   @Override

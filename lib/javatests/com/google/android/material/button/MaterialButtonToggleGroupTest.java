@@ -29,6 +29,8 @@ import android.graphics.RectF;
 import android.view.View;
 import android.widget.Checkable;
 import android.widget.LinearLayout;
+import android.widget.RadioButton;
+import android.widget.ToggleButton;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat;
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.CollectionInfoCompat;
@@ -313,5 +315,56 @@ public class MaterialButtonToggleGroupTest {
     child.setPressed(true);
     child.performClick();
     assertThat(checkedChangeCallCount).isEqualTo(1);
+  }
+
+  @Test
+  public void setEnable_false_disablesChildButtons() {
+    MaterialButton firstChild = (MaterialButton) toggleGroup.getChildAt(0);
+    MaterialButton middleChild = (MaterialButton) toggleGroup.getChildAt(1);
+    MaterialButton lastChild = (MaterialButton) toggleGroup.getChildAt(2);
+    firstChild.setEnabled(true);
+    middleChild.setEnabled(true);
+    lastChild.setEnabled(true);
+
+    toggleGroup.setEnabled(false);
+
+    assertThat(firstChild.isEnabled()).isFalse();
+    assertThat(middleChild.isEnabled()).isFalse();
+    assertThat(lastChild.isEnabled()).isFalse();
+  }
+
+  @Test
+  public void setEnable_true_enablesChildButtons() {
+    MaterialButton firstChild = (MaterialButton) toggleGroup.getChildAt(0);
+    MaterialButton middleChild = (MaterialButton) toggleGroup.getChildAt(1);
+    MaterialButton lastChild = (MaterialButton) toggleGroup.getChildAt(2);
+
+    firstChild.setEnabled(false);
+    middleChild.setEnabled(false);
+    lastChild.setEnabled(false);
+
+    toggleGroup.setEnabled(true);
+
+    assertThat(firstChild.isEnabled()).isTrue();
+    assertThat(middleChild.isEnabled()).isTrue();
+    assertThat(lastChild.isEnabled()).isTrue();
+  }
+
+  @Test
+  public void singleSelection_hasRadioButtonA11yClassName() {
+    toggleGroup.setSingleSelection(true);
+    View button1 = toggleGroup.getChildAt(0);
+
+    assertThat(((MaterialButton) button1).getA11yClassName())
+        .isEqualTo(RadioButton.class.getName());
+  }
+
+  @Test
+  public void multiSelection_hasToggleButtonA11yClassName() {
+    toggleGroup.setSingleSelection(false);
+    View button1 = toggleGroup.getChildAt(0);
+
+    assertThat(((MaterialButton) button1).getA11yClassName())
+        .isEqualTo(ToggleButton.class.getName());
   }
 }

@@ -16,9 +16,15 @@ access to primary destinations in your app on tablet and desktop screens.
 
 **Contents**
 
+*   [Design & API Documentation](#design-api-documentation)
 *   [Using navigation rail](#using-navigation-rail)
 *   [Navigation rail example](#navigation-rail-example)
 *   [Theming](#theming-a-navigation-rail)
+
+## Design & API Documentation
+
+*   [Google Material3 Spec](https://material.io/components/navigation-rail/overview)
+*   [API Reference](https://developer.android.com/reference/com/google/android/material/navigationrail/package-summary)
 
 ## Using navigation rail
 
@@ -120,6 +126,12 @@ which is set to true by default. To remove this behavior, set
 bottom insets independently by using `app:paddingTopSystemWindowInsets` and
 `app:paddingBottomSystemWindowInsets`.
 
+API and source code:
+
+*   `NavigationRailView`
+    *   [Class description](https://developer.android.com/reference/com/google/android/material/navigationrail/NavigationRailView)
+    *   [Class source](https://github.com/material-components/material-components-android/tree/master/lib/java/com/google/android/material/navigationrail/NavigationRailView.java)
+
 ### Making navigation rail accessible
 
 You should set an `android:title` for each of your `menu` items so that screen
@@ -190,8 +202,8 @@ calls to this method will reuse the existing `BadgeDrawable`:
 ```kt
 var badge = navigationRail.getOrCreateBadge(menuItemId)
 badge.isVisible = true
-// An icon only badge will be displayed unless a number is set:
-badge.number = 99
+// An icon only badge will be displayed unless a number or text is set:
+badge.number = 99  // or badge.text = "New"
 ```
 
 As best practice, if you need to temporarily hide the badge, for example until
@@ -201,7 +213,7 @@ the next notification is received, change the visibility of `BadgeDrawable`:
 val badgeDrawable = navigationRail.getBadge(menuItemId)
     if (badgeDrawable != null) {
         badgeDrawable.isVisible = false
-        badgeDrawable.clearNumber()
+        badgeDrawable.clearNumber()  // or badgeDrawable.clearText()
     }
 ```
 
@@ -214,12 +226,6 @@ navigationRail.removeBadge(menuItemId)
 See the [`BadgeDrawable`](BadgeDrawable.md) documentation for more information.
 
 ## Navigation rail example
-
-API and source code:
-
-*   `NavigationRailView`
-    *   [Class description](https://developer.android.com/reference/com/google/android/material/navigationrail/NavigationRailView)
-    *   [Class source](https://github.com/material-components/material-components-android/tree/master/lib/java/com/google/android/material/navigationrail/NavigationRailView.java)
 
 The following example shows a navigation rail with four icons:
 
@@ -311,13 +317,14 @@ for more attributes.
 
 #### Active indicator attributes
 
-**Element**           | **Attribute**          | **Related methods**                                                                   | **Default value**
---------------------- | ---------------------- | ------------------------------------------------------------------------------------- | -----------------
-**Color**             | `android:color`        | `setItemActiveIndicatorColor`<br/>`getItemActiveIndicatorColor`                       | `?attr/colorSecondaryContainer`
-**Width**             | `android:width`        | `setItemActiveIndicatorWidth`<br/>`getItemActiveIndicatorWidth`                       | `56dp`
-**Height**            | `android:height`       | `setItemActiveIndicatorHeight`<br/>`setItemActiveIndicatorHeight`                     | `32dp`
-**Shape**             | `app:shapeAppearance`  | `setItemActiveIndicatorShapeAppearance`<br/>`getItemActiveIndicatorShapeAppearance`   | `50% rounded`
-**Margin horizontal** | `app:marginHorizontal` | `setItemActiveIndicatorMarginHorizontal`<br/>`getItemActiveIndicatorMarginHorizontal` | `4dp`
+**Element**                             | **Attribute**                     | **Related methods**                                                                   | **Default value**
+--------------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------- | -----------------
+**Color**                               | `android:color`                   | `setItemActiveIndicatorColor`<br/>`getItemActiveIndicatorColor`                       | `?attr/colorSecondaryContainer`
+**Width**                               | `android:width`                   | `setItemActiveIndicatorWidth`<br/>`getItemActiveIndicatorWidth`                       | `56dp`
+**Height**                              | `android:height`                  | `setItemActiveIndicatorHeight`<br/>`setItemActiveIndicatorHeight`                     | `32dp`
+**Shape**                               | `app:shapeAppearance`             | `setItemActiveIndicatorShapeAppearance`<br/>`getItemActiveIndicatorShapeAppearance`   | `50% rounded`
+**Margin horizontal**                   | `app:marginHorizontal`            | `setItemActiveIndicatorMarginHorizontal`<br/>`getItemActiveIndicatorMarginHorizontal` | `4dp`
+**Padding between indicator and label** | `app:activeIndicatorLabelPadding` | `setActiveIndicatorLabelPadding` <br/> `setActiveIndicatorLabelPadding`               | `4dp`
 
 #### Icon attributes
 
@@ -330,13 +337,14 @@ for more attributes.
 
 #### Text label attributes
 
-**Element**               | **Attribute**                          | **Related methods**                                                 | **Default value**
-------------------------- | -------------------------------------- | ------------------------------------------------------------------- | -----------------
-**Text label**            | `android:title` in the `menu` resource | N/A                                                                 | N/A
-**Color (inactive)**      | `app:itemTextColor`                    | `setItemTextColor`<br/>`getItemTextColor`                           | `?attr/colorOnSurfaceVariant`
-**Color (active)**        | `app:itemTextColor`                    | `setItemTextColor`<br/>`getItemTextColor`                           | `?attr/colorOnSurface`
-**Typography (inactive)** | `app:itemTextAppearanceInactive`       | `setItemTextAppearanceInactive`<br/>`getItemTextAppearanceInactive` | `?attr/textAppearanceTitleSmall`
-**Typography (active)**   | `app:itemTextAppearanceActive`         | `setItemTextAppearanceActive`<br/>`getItemTextAppearanceActive`     | `?attr/textAppearanceTitleSmall`
+| **Element**               | **Attribute**                             | **Related methods**                                                 | **Default value**                |
+|---------------------------|-------------------------------------------|---------------------------------------------------------------------|----------------------------------|
+| **Text label**            | `android:title` in the `menu` resource    | N/A                                                                 | N/A                              |
+| **Color (inactive)**      | `app:itemTextColor`                       | `setItemTextColor`<br/>`getItemTextColor`                           | `?attr/colorOnSurfaceVariant`    |
+| **Color (active)**        | `app:itemTextColor`                       | `setItemTextColor`<br/>`getItemTextColor`                           | `?attr/colorOnSurface`           |
+| **Typography (inactive)** | `app:itemTextAppearanceInactive`          | `setItemTextAppearanceInactive`<br/>`getItemTextAppearanceInactive` | `?attr/textAppearanceTitleSmall` |
+| **Typography (active)**   | `app:itemTextAppearanceActive`            | `setItemTextAppearanceActive`<br/>`getItemTextAppearanceActive`     | `?attr/textAppearanceTitleSmall` |
+| **Typography (active)**   | `app:itemTextAppearanceActiveBoldEnabled` | `setItemTextAppearanceActiveBoldEnabled`                            | `true`                           |
 
 #### Styles
 

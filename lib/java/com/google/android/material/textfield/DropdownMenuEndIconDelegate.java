@@ -25,6 +25,7 @@ import static com.google.android.material.textfield.EditTextUtils.isEditable;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
+import android.animation.TimeInterpolator;
 import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.content.Context;
@@ -44,9 +45,11 @@ import androidx.annotation.ChecksSdkIntAtLeast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.view.ViewCompat;
+import androidx.core.view.accessibility.AccessibilityEventCompat;
 import androidx.core.view.accessibility.AccessibilityManagerCompat.TouchExplorationStateChangeListener;
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat;
 import com.google.android.material.animation.AnimationUtils;
+import com.google.android.material.motion.MotionUtils;
 import com.google.android.material.textfield.TextInputLayout.BoxBackgroundMode;
 
 /** Default initialization of the exposed dropdown menu {@link TextInputLayout.EndIconMode}. */
@@ -55,8 +58,11 @@ class DropdownMenuEndIconDelegate extends EndIconDelegate {
   @ChecksSdkIntAtLeast(api = VERSION_CODES.LOLLIPOP)
   private static final boolean IS_LOLLIPOP = VERSION.SDK_INT >= VERSION_CODES.LOLLIPOP;
 
-  private static final int ANIMATION_FADE_OUT_DURATION = 50;
-  private static final int ANIMATION_FADE_IN_DURATION = 67;
+  private static final int DEFAULT_ANIMATION_FADE_OUT_DURATION = 50;
+  private static final int DEFAULT_ANIMATION_FADE_IN_DURATION = 67;
+  private final int animationFadeOutDuration;
+  private final int animationFadeInDuration;
+  @NonNull private final TimeInterpolator animationFadeInterpolator;
 
   @Nullable
   private AutoCompleteTextView autoCompleteTextView;
@@ -91,6 +97,21 @@ class DropdownMenuEndIconDelegate extends EndIconDelegate {
 
   DropdownMenuEndIconDelegate(@NonNull EndCompoundLayout endLayout) {
     super(endLayout);
+    animationFadeInDuration =
+        MotionUtils.resolveThemeDuration(
+            endLayout.getContext(),
+            R.attr.motionDurationShort3,
+            DEFAULT_ANIMATION_FADE_IN_DURATION);
+    animationFadeOutDuration =
+        MotionUtils.resolveThemeDuration(
+            endLayout.getContext(),
+            R.attr.motionDurationShort3,
+            DEFAULT_ANIMATION_FADE_OUT_DURATION);
+    animationFadeInterpolator =
+        MotionUtils.resolveThemeInterpolator(
+            endLayout.getContext(),
+            R.attr.motionEasingLinearInterpolator,
+            AnimationUtils.LINEAR_INTERPOLATOR);
   }
 
   @Override
@@ -210,13 +231,22 @@ class DropdownMenuEndIconDelegate extends EndIconDelegate {
     }
   }
 
+  @SuppressLint("WrongConstant")
   @Override
   public void onPopulateAccessibilityEvent(View host, @NonNull AccessibilityEvent event) {
+    if (!accessibilityManager.isEnabled() || isEditable(autoCompleteTextView)) {
+      return;
+    }
+    // TODO(b/256138189): Find better workaround, back gesture should call
+    // AutoCompleteTextView.OnDismissListener.
+    boolean invalidState =
+        (event.getEventType() == AccessibilityEventCompat.TYPE_VIEW_ACCESSIBILITY_FOCUSED
+                || event.getEventType() == AccessibilityEventCompat.CONTENT_CHANGE_TYPE_PANE_TITLE)
+            && isEndIconChecked
+            && !autoCompleteTextView.isPopupShowing();
     // If dropdown is non editable, layout click is what triggers showing/hiding the popup
     // list. Otherwise, arrow icon alone is what triggers it.
-    if (event.getEventType() == TYPE_VIEW_CLICKED
-        && accessibilityManager.isEnabled()
-        && !isEditable(autoCompleteTextView)) {
+    if (event.getEventType() == TYPE_VIEW_CLICKED || invalidState) {
       showHideDropdown();
       updateDropdownPopupDirty();
     }
@@ -300,8 +330,8 @@ class DropdownMenuEndIconDelegate extends EndIconDelegate {
   }
 
   private void initAnimators() {
-    fadeInAnim = getAlphaAnimator(ANIMATION_FADE_IN_DURATION, 0, 1);
-    fadeOutAnim = getAlphaAnimator(ANIMATION_FADE_OUT_DURATION, 1, 0);
+    fadeInAnim = getAlphaAnimator(animationFadeInDuration, 0, 1);
+    fadeOutAnim = getAlphaAnimator(animationFadeOutDuration, 1, 0);
     fadeOutAnim.addListener(
         new AnimatorListenerAdapter() {
           @Override
@@ -314,7 +344,7 @@ class DropdownMenuEndIconDelegate extends EndIconDelegate {
 
   private ValueAnimator getAlphaAnimator(int duration, float... values) {
     ValueAnimator animator = ValueAnimator.ofFloat(values);
-    animator.setInterpolator(AnimationUtils.LINEAR_INTERPOLATOR);
+    animator.setInterpolator(animationFadeInterpolator);
     animator.setDuration(duration);
     animator.addUpdateListener(animation -> {
       float alpha = (float) animation.getAnimatedValue();

@@ -20,6 +20,7 @@ import com.google.android.material.R;
 
 import static androidx.core.math.MathUtils.clamp;
 import static androidx.core.view.accessibility.AccessibilityNodeInfoCompat.RangeInfoCompat.RANGE_TYPE_FLOAT;
+import static com.google.android.material.shape.CornerFamily.ROUNDED;
 import static com.google.android.material.slider.LabelFormatter.LABEL_FLOATING;
 import static com.google.android.material.slider.LabelFormatter.LABEL_GONE;
 import static com.google.android.material.slider.LabelFormatter.LABEL_VISIBLE;
@@ -29,8 +30,7 @@ import static java.lang.Float.compare;
 import static java.lang.Math.abs;
 import static java.lang.Math.max;
 import static java.lang.Math.min;
-import static java.util.Collections.max;
-import static java.util.Collections.min;
+import static java.math.MathContext.DECIMAL64;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
@@ -45,9 +45,12 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.Paint.Cap;
 import android.graphics.Paint.Style;
+import android.graphics.Path;
+import android.graphics.Path.Direction;
 import android.graphics.PorterDuff.Mode;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.Region.Op;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.RippleDrawable;
@@ -65,6 +68,7 @@ import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.view.ViewParent;
+import android.view.ViewTreeObserver;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityManager;
 import android.widget.SeekBar;
@@ -77,6 +81,7 @@ import androidx.annotation.IntDef;
 import androidx.annotation.IntRange;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.Px;
 import androidx.annotation.VisibleForTesting;
 import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.core.view.ViewCompat;
@@ -91,18 +96,17 @@ import com.google.android.material.internal.ViewOverlayImpl;
 import com.google.android.material.internal.ViewUtils;
 import com.google.android.material.motion.MotionUtils;
 import com.google.android.material.resources.MaterialResources;
-import com.google.android.material.shape.CornerFamily;
 import com.google.android.material.shape.MaterialShapeDrawable;
 import com.google.android.material.shape.ShapeAppearanceModel;
 import com.google.android.material.tooltip.TooltipDrawable;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.math.BigDecimal;
-import java.math.MathContext;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * The slider can function either as a continuous slider, or as a discrete slider. The mode of
@@ -135,7 +139,10 @@ import java.util.List;
  *   <li>{@code thumbStrokeColor}: the color of the thumb's stroke.
  *   <li>{@code thumbStrokeWidth}: the width of the thumb's stroke.
  *   <li>{@code thumbElevation}: the elevation of the slider's thumb.
+ *   <li>{@code thumbWidth}: The width of the slider's thumb.
+ *   <li>{@code thumbHeight}: The height of the slider's thumb.
  *   <li>{@code thumbRadius}: The radius of the slider's thumb.
+ *   <li>{@code thumbTrackGapSize}: The size of the gap between the thumb and the track.
  *   <li>{@code tickColorActive}: the color of the slider's tick marks for the active part of the
  *       track. Only used when the slider is in discrete mode.
  *   <li>{@code tickColorInactive}: the color of the slider's tick marks for the inactive part of
@@ -152,6 +159,9 @@ import java.util.List;
  *       {@code trackColorActive} and {@code trackColorInactive} to the same thing. This takes
  *       precedence over {@code trackColorActive} and {@code trackColorInactive}.
  *   <li>{@code trackHeight}: The height of the track.
+ *   <li>{@code trackInsideCornerSize}: The corner size on the inside of the track (visible with
+ *       gap).
+ *   <li>{@code trackStopIndicatorSize}: The size of the stop indicator at the edges of the track.
  * </ul>
  *
  * <p>The following XML attributes are used to set the slider's various parameters of operation:
@@ -184,7 +194,10 @@ import java.util.List;
  * @attr ref com.google.android.material.R.styleable#Slider_labelStyle
  * @attr ref com.google.android.material.R.styleable#Slider_thumbColor
  * @attr ref com.google.android.material.R.styleable#Slider_thumbElevation
+ * @attr ref com.google.android.material.R.styleable#Slider_thumbWidth
+ * @attr ref com.google.android.material.R.styleable#Slider_thumbHeight
  * @attr ref com.google.android.material.R.styleable#Slider_thumbRadius
+ * @attr ref com.google.android.material.R.styleable#Slider_thumbTrackGapSize
  * @attr ref com.google.android.material.R.styleable#Slider_tickColor
  * @attr ref com.google.android.material.R.styleable#Slider_tickColorActive
  * @attr ref com.google.android.material.R.styleable#Slider_tickColorInactive
@@ -193,6 +206,8 @@ import java.util.List;
  * @attr ref com.google.android.material.R.styleable#Slider_trackColorActive
  * @attr ref com.google.android.material.R.styleable#Slider_trackColorInactive
  * @attr ref com.google.android.material.R.styleable#Slider_trackHeight
+ * @attr ref com.google.android.material.R.styleable#Slider_trackInsideCornerSize
+ * @attr ref com.google.android.material.R.styleable#Slider_trackStopIndicatorSize
  */
 abstract class BaseSlider<
         S extends BaseSlider<S, L, T>,
@@ -228,6 +243,7 @@ abstract class BaseSlider<
   private static final int TIMEOUT_SEND_ACCESSIBILITY_EVENT = 200;
   private static final int HALO_ALPHA = 63;
   private static final double THRESHOLD = .0001;
+  private static final float THUMB_WIDTH_PRESSED_RATIO = .5f;
 
   static final int DEF_STYLE_RES = R.style.Widget_MaterialComponents_Slider;
   static final int UNIT_VALUE = 1;
@@ -235,14 +251,14 @@ abstract class BaseSlider<
 
   private static final int DEFAULT_LABEL_ANIMATION_ENTER_DURATION = 83;
   private static final int DEFAULT_LABEL_ANIMATION_EXIT_DURATION = 117;
-  private static final int LABEL_ANIMATION_ENTER_DURATION_ATTR = R.attr.motionDurationLong2;
-  private static final int LABEL_ANIMATION_EXIT_DURATION_ATTR = R.attr.motionDurationMedium1;
+  private static final int LABEL_ANIMATION_ENTER_DURATION_ATTR = R.attr.motionDurationMedium4;
+  private static final int LABEL_ANIMATION_EXIT_DURATION_ATTR = R.attr.motionDurationShort3;
   private static final int LABEL_ANIMATION_ENTER_EASING_ATTR =
       R.attr.motionEasingEmphasizedInterpolator;
   private static final int LABEL_ANIMATION_EXIT_EASING_ATTR =
       R.attr.motionEasingEmphasizedAccelerateInterpolator;
 
-  @Dimension
+  @Dimension(unit = Dimension.DP)
   private static final int MIN_TOUCH_TARGET_DP = 48;
 
   @NonNull private final Paint inactiveTrackPaint;
@@ -251,15 +267,12 @@ abstract class BaseSlider<
   @NonNull private final Paint haloPaint;
   @NonNull private final Paint inactiveTicksPaint;
   @NonNull private final Paint activeTicksPaint;
+  @NonNull private final Paint stopIndicatorPaint;
   @NonNull private final AccessibilityHelper accessibilityHelper;
   private final AccessibilityManager accessibilityManager;
   private AccessibilityEventSender accessibilityEventSender;
 
-  private interface TooltipDrawableFactory {
-    TooltipDrawable createTooltipDrawable();
-  }
-
-  @NonNull private final TooltipDrawableFactory labelMaker;
+  private int labelStyle;
   @NonNull private final List<TooltipDrawable> labels = new ArrayList<>();
   @NonNull private final List<L> changeListeners = new ArrayList<>();
   @NonNull private final List<T> touchListeners = new ArrayList<>();
@@ -274,17 +287,25 @@ abstract class BaseSlider<
   private int minTrackSidePadding;
   private int defaultThumbRadius;
   private int defaultTrackHeight;
+  private int defaultTickActiveRadius;
+  private int defaultTickInactiveRadius;
+  private int minTickSpacing;
 
-  @Dimension(unit = Dimension.PX)
-  private int minTouchTargetSize;
+  @Px private int minTouchTargetSize;
 
   private int minWidgetHeight;
   private int widgetHeight;
   private int labelBehavior;
   private int trackHeight;
   private int trackSidePadding;
-  private int thumbRadius;
+  private int thumbWidth;
+  private int thumbHeight;
   private int haloRadius;
+  private int thumbTrackGapSize;
+  private int defaultThumbWidth = -1;
+  private int defaultThumbTrackGapSize = -1;
+  private int trackStopIndicatorSize;
+  private int trackInsideCornerSize;
   private int labelPadding;
   private float touchDownX;
   private MotionEvent lastEvent;
@@ -302,6 +323,8 @@ abstract class BaseSlider<
   private float stepSize = 0.0f;
   private float[] ticksCoordinates;
   private boolean tickVisible = true;
+  private int tickActiveRadius;
+  private int tickInactiveRadius;
   private int trackWidth;
   private boolean forceDrawCompatHalo;
   private boolean isLongPress = false;
@@ -313,12 +336,19 @@ abstract class BaseSlider<
   @NonNull private ColorStateList trackColorActive;
   @NonNull private ColorStateList trackColorInactive;
 
+  @NonNull private final Path trackPath = new Path();
+  @NonNull private final RectF trackRect = new RectF();
+  @NonNull private final RectF cornerRect = new RectF();
   @NonNull private final MaterialShapeDrawable defaultThumbDrawable = new MaterialShapeDrawable();
   @Nullable private Drawable customThumbDrawable;
   @NonNull private List<Drawable> customThumbDrawablesForValues = Collections.emptyList();
 
   private float touchPosition;
   @SeparationUnit private int separationUnit = UNIT_PX;
+
+  @NonNull
+  private final ViewTreeObserver.OnScrollChangedListener onScrollChangedListener =
+      this::updateLabels;
 
   /**
    * Determines the behavior of the label which can be any of the following.
@@ -357,12 +387,7 @@ abstract class BaseSlider<
     context = getContext();
 
     inactiveTrackPaint = new Paint();
-    inactiveTrackPaint.setStyle(Style.STROKE);
-    inactiveTrackPaint.setStrokeCap(Cap.ROUND);
-
     activeTrackPaint = new Paint();
-    activeTrackPaint.setStyle(Style.STROKE);
-    activeTrackPaint.setStrokeCap(Cap.ROUND);
 
     thumbPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     thumbPaint.setStyle(Style.FILL);
@@ -379,23 +404,11 @@ abstract class BaseSlider<
     activeTicksPaint.setStyle(Style.STROKE);
     activeTicksPaint.setStrokeCap(Cap.ROUND);
 
+    stopIndicatorPaint = new Paint();
+    stopIndicatorPaint.setStyle(Style.FILL);
+    stopIndicatorPaint.setStrokeCap(Cap.ROUND);
+
     loadResources(context.getResources());
-
-    // Because there's currently no way to copy the TooltipDrawable we use this to make more if more
-    // thumbs are added.
-    labelMaker =
-        new TooltipDrawableFactory() {
-          @Override
-          public TooltipDrawable createTooltipDrawable() {
-            final TypedArray a =
-                ThemeEnforcement.obtainStyledAttributes(
-                    getContext(), attrs, R.styleable.Slider, defStyleAttr, DEF_STYLE_RES);
-            TooltipDrawable d = parseLabelDrawable(getContext(), a);
-            a.recycle();
-            return d;
-          }
-        };
-
     processAttributes(context, attrs, defStyleAttr);
 
     setFocusable(true);
@@ -423,6 +436,10 @@ abstract class BaseSlider<
     defaultThumbRadius = resources.getDimensionPixelSize(R.dimen.mtrl_slider_thumb_radius);
     defaultTrackHeight = resources.getDimensionPixelSize(R.dimen.mtrl_slider_track_height);
 
+    defaultTickActiveRadius = resources.getDimensionPixelSize(R.dimen.mtrl_slider_tick_radius);
+    defaultTickInactiveRadius = resources.getDimensionPixelSize(R.dimen.mtrl_slider_tick_radius);
+    minTickSpacing = resources.getDimensionPixelSize(R.dimen.mtrl_slider_tick_min_spacing);
+
     labelPadding = resources.getDimensionPixelSize(R.dimen.mtrl_slider_label_padding);
   }
 
@@ -430,6 +447,10 @@ abstract class BaseSlider<
     TypedArray a =
         ThemeEnforcement.obtainStyledAttributes(
             context, attrs, R.styleable.Slider, defStyleAttr, DEF_STYLE_RES);
+
+    labelStyle =
+        a.getResourceId(R.styleable.Slider_labelStyle, R.style.Widget_MaterialComponents_Tooltip);
+
     valueFrom = a.getFloat(R.styleable.Slider_android_valueFrom, 0.0f);
     valueTo = a.getFloat(R.styleable.Slider_android_valueTo, 1.0f);
     setValues(valueFrom);
@@ -440,8 +461,7 @@ abstract class BaseSlider<
     minTouchTargetSize =
         (int)
             Math.ceil(
-                a.getDimension(
-                    R.styleable.Slider_minTouchTargetSize, defaultMinTouchTargetSize));
+                a.getDimension(R.styleable.Slider_minTouchTargetSize, defaultMinTouchTargetSize));
 
     boolean hasTrackColor = a.hasValue(R.styleable.Slider_trackColor);
 
@@ -502,12 +522,26 @@ abstract class BaseSlider<
             : AppCompatResources.getColorStateList(
                 context, R.color.material_slider_active_tick_marks_color));
 
-    setThumbRadius(a.getDimensionPixelSize(R.styleable.Slider_thumbRadius, 0));
+    setThumbTrackGapSize(a.getDimensionPixelSize(R.styleable.Slider_thumbTrackGapSize, 0));
+    setTrackStopIndicatorSize(
+        a.getDimensionPixelSize(R.styleable.Slider_trackStopIndicatorSize, 0));
+    setTrackInsideCornerSize(a.getDimensionPixelSize(R.styleable.Slider_trackInsideCornerSize, 0));
+
+    int radius = a.getDimensionPixelSize(R.styleable.Slider_thumbRadius, 0);
+    int thumbWidth = a.getDimensionPixelSize(R.styleable.Slider_thumbWidth, radius * 2);
+    int thumbHeight = a.getDimensionPixelSize(R.styleable.Slider_thumbHeight, radius * 2);
+    setThumbWidth(thumbWidth);
+    setThumbHeight(thumbHeight);
     setHaloRadius(a.getDimensionPixelSize(R.styleable.Slider_haloRadius, 0));
 
     setThumbElevation(a.getDimension(R.styleable.Slider_thumbElevation, 0));
 
     setTrackHeight(a.getDimensionPixelSize(R.styleable.Slider_trackHeight, 0));
+
+    setTickActiveRadius(
+        a.getDimensionPixelSize(R.styleable.Slider_tickRadiusActive, trackStopIndicatorSize / 2));
+    setTickInactiveRadius(
+        a.getDimensionPixelSize(R.styleable.Slider_tickRadiusInactive, trackStopIndicatorSize / 2));
 
     setLabelBehavior(a.getInt(R.styleable.Slider_labelBehavior, LABEL_FLOATING));
 
@@ -518,21 +552,17 @@ abstract class BaseSlider<
     a.recycle();
   }
 
-  @NonNull
-  private static TooltipDrawable parseLabelDrawable(
-      @NonNull Context context, @NonNull TypedArray a) {
-    return TooltipDrawable.createFromAttributes(
-        context,
-        null,
-        0,
-        a.getResourceId(R.styleable.Slider_labelStyle, R.style.Widget_MaterialComponents_Tooltip));
-  }
-
   private boolean maybeIncreaseTrackSidePadding() {
-    int increasedSidePaddingByThumb = max(thumbRadius - defaultThumbRadius, 0);
+    int increasedSidePaddingByThumb = max(thumbWidth / 2 - defaultThumbRadius, 0);
     int increasedSidePaddingByTrack = max((trackHeight - defaultTrackHeight) / 2, 0);
+    int increasedSidePaddingByActiveTick = max(tickActiveRadius - defaultTickActiveRadius, 0);
+    int increasedSidePaddingByInactiveTick = max(tickInactiveRadius - defaultTickInactiveRadius, 0);
     int newTrackSidePadding =
-        minTrackSidePadding + max(increasedSidePaddingByThumb, increasedSidePaddingByTrack);
+        minTrackSidePadding
+            + max(
+                max(increasedSidePaddingByThumb, increasedSidePaddingByTrack),
+                max(increasedSidePaddingByActiveTick, increasedSidePaddingByInactiveTick));
+
     if (trackSidePadding == newTrackSidePadding) {
       return false;
     }
@@ -559,14 +589,18 @@ abstract class BaseSlider<
 
   private boolean valueLandsOnTick(float value) {
     // Check that the value is a multiple of stepSize given the offset of valueFrom.
-    return isMultipleOfStepSize(value - valueFrom);
-  }
-
-  private boolean isMultipleOfStepSize(float value) {
-    // We're using BigDecimal here to avoid floating point rounding errors.
     double result =
         new BigDecimal(Float.toString(value))
-            .divide(new BigDecimal(Float.toString(stepSize)), MathContext.DECIMAL64)
+            .subtract(new BigDecimal(Float.toString(valueFrom)), DECIMAL64)
+            .doubleValue();
+    return isMultipleOfStepSize(result);
+  }
+
+  private boolean isMultipleOfStepSize(double value) {
+    // We're using BigDecimal here to avoid floating point rounding errors.
+    double result =
+        new BigDecimal(Double.toString(value))
+            .divide(new BigDecimal(Float.toString(stepSize)), DECIMAL64)
             .doubleValue();
 
     // If the result is a whole number, it means the value is a multiple of stepSize.
@@ -782,7 +816,10 @@ abstract class BaseSlider<
 
     // If there's not enough labels, add more.
     while (labels.size() < values.size()) {
-      TooltipDrawable tooltipDrawable = labelMaker.createTooltipDrawable();
+      // Because there's currently no way to copy the TooltipDrawable we use this to make more
+      // if more thumbs are added.
+      TooltipDrawable tooltipDrawable =
+          TooltipDrawable.createFromAttributes(getContext(), null, 0, labelStyle);
       labels.add(tooltipDrawable);
       if (ViewCompat.isAttachedToWindow(this)) {
         attachLabelToContentView(tooltipDrawable);
@@ -917,13 +954,12 @@ abstract class BaseSlider<
   }
 
   private void adjustCustomThumbDrawableBounds(Drawable drawable) {
-    int thumbDiameter = thumbRadius * 2;
     int originalWidth = drawable.getIntrinsicWidth();
     int originalHeight = drawable.getIntrinsicHeight();
     if (originalWidth == -1 && originalHeight == -1) {
-      drawable.setBounds(0, 0, thumbDiameter, thumbDiameter);
+      drawable.setBounds(0, 0, thumbWidth, thumbHeight);
     } else {
-      float scaleRatio = (float) thumbDiameter / max(originalWidth, originalHeight);
+      float scaleRatio = (float) max(thumbWidth, thumbHeight) / max(originalWidth, originalHeight);
       drawable.setBounds(
           0, 0, (int) (originalWidth * scaleRatio), (int) (originalHeight * scaleRatio));
     }
@@ -1059,9 +1095,9 @@ abstract class BaseSlider<
    * @see #setThumbRadiusResource(int)
    * @attr ref com.google.android.material.R.styleable#Slider_thumbRadius
    */
-  @Dimension
+  @Px
   public int getThumbRadius() {
-    return thumbRadius;
+    return thumbWidth / 2;
   }
 
   /**
@@ -1073,25 +1109,9 @@ abstract class BaseSlider<
    * @see #getThumbRadius()
    * @attr ref com.google.android.material.R.styleable#Slider_thumbRadius
    */
-  public void setThumbRadius(@IntRange(from = 0) @Dimension int radius) {
-    if (radius == thumbRadius) {
-      return;
-    }
-
-    thumbRadius = radius;
-
-    defaultThumbDrawable.setShapeAppearanceModel(
-        ShapeAppearanceModel.builder().setAllCorners(CornerFamily.ROUNDED, thumbRadius).build());
-    defaultThumbDrawable.setBounds(0, 0, thumbRadius * 2, thumbRadius * 2);
-
-    if (customThumbDrawable != null) {
-      adjustCustomThumbDrawableBounds(customThumbDrawable);
-    }
-    for (Drawable customDrawable : customThumbDrawablesForValues) {
-      adjustCustomThumbDrawableBounds(customDrawable);
-    }
-
-    updateWidgetLayout();
+  public void setThumbRadius(@IntRange(from = 0) @Px int radius) {
+    setThumbWidth(radius * 2);
+    setThumbHeight(radius * 2);
   }
 
   /**
@@ -1105,6 +1125,120 @@ abstract class BaseSlider<
    */
   public void setThumbRadiusResource(@DimenRes int radius) {
     setThumbRadius(getResources().getDimensionPixelSize(radius));
+  }
+
+  /**
+   * Returns the width of the thumb. Note that setting this will also affect custom drawables set
+   * through {@link #setCustomThumbDrawable(int)}, {@link #setCustomThumbDrawable(Drawable)}, {@link
+   * #setCustomThumbDrawablesForValues(int...)}, and {@link
+   * #setCustomThumbDrawablesForValues(Drawable...)}.
+   *
+   * @see #setThumbWidth(int)
+   * @see #setThumbWidthResource(int)
+   * @attr ref com.google.android.material.R.styleable#Slider_thumbWidth
+   */
+  @Px
+  public int getThumbWidth() {
+    return thumbWidth;
+  }
+
+  /**
+   * Sets the width of the thumb in pixels. Note that setting this will also affect custom drawables
+   * set through {@link #setCustomThumbDrawable(int)}, {@link #setCustomThumbDrawable(Drawable)},
+   * {@link #setCustomThumbDrawablesForValues(int...)}, and {@link
+   * #setCustomThumbDrawablesForValues(Drawable...)}.
+   *
+   * @see #getThumbWidth()
+   * @attr ref com.google.android.material.R.styleable#Slider_thumbWidth
+   */
+  public void setThumbWidth(@IntRange(from = 0) @Px int width) {
+    if (width == thumbWidth) {
+      return;
+    }
+
+    thumbWidth = width;
+
+    defaultThumbDrawable.setShapeAppearanceModel(
+        ShapeAppearanceModel.builder().setAllCorners(ROUNDED, thumbWidth / 2f).build());
+    defaultThumbDrawable.setBounds(0, 0, thumbWidth, thumbHeight);
+
+    if (customThumbDrawable != null) {
+      adjustCustomThumbDrawableBounds(customThumbDrawable);
+    }
+    for (Drawable customDrawable : customThumbDrawablesForValues) {
+      adjustCustomThumbDrawableBounds(customDrawable);
+    }
+
+    updateWidgetLayout();
+  }
+
+  /**
+   * Sets the width of the thumb from a dimension resource. Note that setting this will also affect
+   * custom drawables set through {@link #setCustomThumbDrawable(int)}, {@link
+   * #setCustomThumbDrawable(Drawable)}, {@link #setCustomThumbDrawablesForValues(int...)}, and
+   * {@link #setCustomThumbDrawablesForValues(Drawable...)}.
+   *
+   * @see #getThumbWidth()
+   * @attr ref com.google.android.material.R.styleable#Slider_thumbWidth
+   */
+  public void setThumbWidthResource(@DimenRes int width) {
+    setThumbWidth(getResources().getDimensionPixelSize(width));
+  }
+
+  /**
+   * Returns the height of the thumb. Note that setting this will also affect custom drawables set
+   * through {@link #setCustomThumbDrawable(int)}, {@link #setCustomThumbDrawable(Drawable)}, {@link
+   * #setCustomThumbDrawablesForValues(int...)}, and {@link
+   * #setCustomThumbDrawablesForValues(Drawable...)}.
+   *
+   * @see #setThumbHeight(int)
+   * @see #setThumbHeightResource(int)
+   * @attr ref com.google.android.material.R.styleable#Slider_thumbHeight
+   */
+  @Px
+  public int getThumbHeight() {
+    return thumbHeight;
+  }
+
+  /**
+   * Sets the height of the thumb in pixels. Note that setting this will also affect custom
+   * drawables set through {@link #setCustomThumbDrawable(int)}, {@link
+   * #setCustomThumbDrawable(Drawable)}, {@link #setCustomThumbDrawablesForValues(int...)}, and
+   * {@link #setCustomThumbDrawablesForValues(Drawable...)}.
+   *
+   * @see #getThumbHeight()
+   * @attr ref com.google.android.material.R.styleable#Slider_thumbHeight
+   */
+  public void setThumbHeight(@IntRange(from = 0) @Px int height) {
+    if (height == thumbHeight) {
+      return;
+    }
+
+    thumbHeight = height;
+
+    defaultThumbDrawable.setBounds(0, 0, thumbWidth, thumbHeight);
+
+    if (customThumbDrawable != null) {
+      adjustCustomThumbDrawableBounds(customThumbDrawable);
+    }
+    for (Drawable customDrawable : customThumbDrawablesForValues) {
+      adjustCustomThumbDrawableBounds(customDrawable);
+    }
+
+    updateWidgetLayout();
+  }
+
+  /**
+   * Sets the height of the thumb from a dimension resource. Note that setting this will also affect
+   * custom drawables set through {@link #setCustomThumbDrawable(int)}, {@link
+   * #setCustomThumbDrawable(Drawable)}, {@link #setCustomThumbDrawablesForValues(int...)}, and
+   * {@link #setCustomThumbDrawablesForValues(Drawable...)}.
+   *
+   * @see #getThumbHeight()
+   * @attr ref com.google.android.material.R.styleable#Slider_thumbHeight
+   */
+  public void setThumbHeightResource(@DimenRes int height) {
+    setThumbHeight(getResources().getDimensionPixelSize(height));
   }
 
   /**
@@ -1197,7 +1331,7 @@ abstract class BaseSlider<
    * @see #setHaloRadiusResource(int)
    * @attr ref com.google.android.material.R.styleable#Slider_haloRadius
    */
-  @Dimension()
+  @Px
   public int getHaloRadius() {
     return haloRadius;
   }
@@ -1208,7 +1342,7 @@ abstract class BaseSlider<
    * @see #getHaloRadius()
    * @attr ref com.google.android.material.R.styleable#Slider_haloRadius
    */
-  public void setHaloRadius(@IntRange(from = 0) @Dimension int radius) {
+  public void setHaloRadius(@IntRange(from = 0) @Px int radius) {
     if (radius == haloRadius) {
       return;
     }
@@ -1269,13 +1403,13 @@ abstract class BaseSlider<
   }
 
   /** Returns the side padding of the track. */
-  @Dimension()
+  @Px
   public int getTrackSidePadding() {
     return trackSidePadding;
   }
 
   /** Returns the width of the track in pixels. */
-  @Dimension()
+  @Px
   public int getTrackWidth() {
     return trackWidth;
   }
@@ -1286,7 +1420,7 @@ abstract class BaseSlider<
    * @see #setTrackHeight(int)
    * @attr ref com.google.android.material.R.styleable#Slider_trackHeight
    */
-  @Dimension()
+  @Px
   public int getTrackHeight() {
     return trackHeight;
   }
@@ -1297,10 +1431,60 @@ abstract class BaseSlider<
    * @see #getTrackHeight()
    * @attr ref com.google.android.material.R.styleable#Slider_trackHeight
    */
-  public void setTrackHeight(@IntRange(from = 0) @Dimension int trackHeight) {
+  public void setTrackHeight(@IntRange(from = 0) @Px int trackHeight) {
     if (this.trackHeight != trackHeight) {
       this.trackHeight = trackHeight;
       invalidateTrack();
+      updateWidgetLayout();
+    }
+  }
+
+  /**
+   * Returns the radius of the active tick in pixels.
+   *
+   * @attr ref com.google.android.material.R.styleable#Slider_activeTickRadius
+   * @see #setTickActiveRadius(int)
+   */
+  @Px
+  public int getTickActiveRadius() {
+    return tickActiveRadius;
+  }
+
+  /**
+   * Set the radius of the active tick in pixels.
+   *
+   * @attr ref com.google.android.material.R.styleable#Slider_activeTickRadius
+   * @see #getTickActiveRadius()
+   */
+  public void setTickActiveRadius(@IntRange(from = 0) @Px int tickActiveRadius) {
+    if (this.tickActiveRadius != tickActiveRadius) {
+      this.tickActiveRadius = tickActiveRadius;
+      activeTicksPaint.setStrokeWidth(tickActiveRadius * 2);
+      updateWidgetLayout();
+    }
+  }
+
+  /**
+   * Returns the radius of the inactive tick in pixels.
+   *
+   * @attr ref com.google.android.material.R.styleable#Slider_inactiveTickRadius
+   * @see #setTickInactiveRadius(int)
+   */
+  @Px
+  public int getTickInactiveRadius() {
+    return tickInactiveRadius;
+  }
+
+  /**
+   * Set the radius of the inactive tick in pixels.
+   *
+   * @attr ref com.google.android.material.R.styleable#Slider_inactiveTickRadius
+   * @see #getTickInactiveRadius()
+   */
+  public void setTickInactiveRadius(@IntRange(from = 0) @Px int tickInactiveRadius) {
+    if (this.tickInactiveRadius != tickInactiveRadius) {
+      this.tickInactiveRadius = tickInactiveRadius;
+      inactiveTicksPaint.setStrokeWidth(tickInactiveRadius * 2);
       updateWidgetLayout();
     }
   }
@@ -1318,7 +1502,7 @@ abstract class BaseSlider<
   private boolean maybeIncreaseWidgetHeight() {
     int topAndBottomPaddings = getPaddingTop() + getPaddingBottom();
     int minHeightRequiredByTrack = trackHeight + topAndBottomPaddings;
-    int minHeightRequiredByThumb = thumbRadius * 2 + getPaddingTop() + getPaddingBottom();
+    int minHeightRequiredByThumb = thumbHeight + getPaddingTop() + getPaddingBottom();
 
     int newWidgetHeight =
         max(minWidgetHeight, max(minHeightRequiredByTrack, minHeightRequiredByThumb));
@@ -1566,6 +1750,7 @@ abstract class BaseSlider<
     }
     trackColorActive = trackColor;
     activeTrackPaint.setColor(getColorForState(trackColorActive));
+    stopIndicatorPaint.setColor(getColorForState(trackColorActive));
     invalidate();
   }
 
@@ -1598,6 +1783,79 @@ abstract class BaseSlider<
     invalidate();
   }
 
+  /**
+   * Returns the size of the gap between the thumb and the track.
+   *
+   * @see #setThumbTrackGapSize(int)
+   * @attr ref com.google.android.material.R.styleable#Slider_thumbTrackGapSize
+   */
+  public int getThumbTrackGapSize() {
+    return thumbTrackGapSize;
+  }
+
+  /**
+   * Sets the size of the gap between the thumb and the track.
+   *
+   * @see #getThumbTrackGapSize()
+   * @attr ref com.google.android.material.R.styleable#Slider_thumbTrackGapSize
+   */
+  public void setThumbTrackGapSize(@Px int thumbTrackGapSize) {
+    if (this.thumbTrackGapSize == thumbTrackGapSize) {
+      return;
+    }
+    this.thumbTrackGapSize = thumbTrackGapSize;
+    invalidate();
+  }
+
+  /**
+   * Returns the size of the stop indicator at the edges of the track.
+   *
+   * @see #setTrackStopIndicatorSize(int)
+   * @attr ref com.google.android.material.R.styleable#Slider_trackStopIndicatorSize
+   */
+  public int getTrackStopIndicatorSize() {
+    return trackStopIndicatorSize;
+  }
+
+  /**
+   * Sets the size of the stop indicator at the edges of the track.
+   *
+   * @see #getTrackStopIndicatorSize()
+   * @attr ref com.google.android.material.R.styleable#Slider_trackStopIndicatorSize
+   */
+  public void setTrackStopIndicatorSize(@Px int trackStopIndicatorSize) {
+    if (this.trackStopIndicatorSize == trackStopIndicatorSize) {
+      return;
+    }
+    this.trackStopIndicatorSize = trackStopIndicatorSize;
+    stopIndicatorPaint.setStrokeWidth(trackStopIndicatorSize);
+    invalidate();
+  }
+
+  /**
+   * Returns the corner size on the inside of the track (visible with gap).
+   *
+   * @see #setTrackInsideCornerSize(int)
+   * @attr ref com.google.android.material.R.styleable#Slider_trackInsideCornerSize
+   */
+  public int getTrackInsideCornerSize() {
+    return trackInsideCornerSize;
+  }
+
+  /**
+   * Sets the corner size on the inside of the track (visible with gap).
+   *
+   * @see #getTrackInsideCornerSize()
+   * @attr ref com.google.android.material.R.styleable#Slider_trackInsideCornerSize
+   */
+  public void setTrackInsideCornerSize(@Px int cornerSize) {
+    if (this.trackInsideCornerSize == cornerSize) {
+      return;
+    }
+    this.trackInsideCornerSize = cornerSize;
+    invalidate();
+  }
+
   @Override
   protected void onVisibilityChanged(@NonNull View changedView, int visibility) {
     super.onVisibilityChanged(changedView, visibility);
@@ -1625,6 +1883,7 @@ abstract class BaseSlider<
   @Override
   protected void onAttachedToWindow() {
     super.onAttachedToWindow();
+    getViewTreeObserver().addOnScrollChangedListener(onScrollChangedListener);
     // The label is attached on the Overlay relative to the content.
     for (TooltipDrawable label : labels) {
       attachLabelToContentView(label);
@@ -1645,7 +1904,7 @@ abstract class BaseSlider<
     for (TooltipDrawable label : labels) {
       detachLabelFromContentView(label);
     }
-
+    getViewTreeObserver().removeOnScrollChangedListener(onScrollChangedListener);
     super.onDetachedFromWindow();
   }
 
@@ -1684,14 +1943,14 @@ abstract class BaseSlider<
 
     int tickCount = (int) ((valueTo - valueFrom) / stepSize + 1);
     // Limit the tickCount if they will be too dense.
-    tickCount = min(tickCount, trackWidth / (trackHeight * 2) + 1);
+    tickCount = min(tickCount, trackWidth / minTickSpacing + 1);
     if (ticksCoordinates == null || ticksCoordinates.length != tickCount * 2) {
       ticksCoordinates = new float[tickCount * 2];
     }
 
     float interval = trackWidth / (float) (tickCount - 1);
     for (int i = 0; i < tickCount * 2; i += 2) {
-      ticksCoordinates[i] = trackSidePadding + i / 2 * interval;
+      ticksCoordinates[i] = trackSidePadding + i / 2f * interval;
       ticksCoordinates[i + 1] = calculateTrackCenter();
     }
   }
@@ -1737,24 +1996,23 @@ abstract class BaseSlider<
 
     int yCenter = calculateTrackCenter();
 
-    drawInactiveTrack(canvas, trackWidth, yCenter);
-    if (max(getValues()) > valueFrom) {
+    float first = values.get(0);
+    float last = values.get(values.size() - 1);
+    if (last < valueTo || (values.size() > 1 && first > valueFrom)) {
+      drawInactiveTrack(canvas, trackWidth, yCenter);
+    }
+    if (last > valueFrom) {
       drawActiveTrack(canvas, trackWidth, yCenter);
     }
 
     maybeDrawTicks(canvas);
+    maybeDrawStopIndicator(canvas, yCenter);
 
-    if ((thumbIsPressed || isFocused() || shouldAlwaysShowLabel()) && isEnabled()) {
-      maybeDrawHalo(canvas, trackWidth, yCenter);
-      // Draw labels if there is an active thumb or the labels are always visible.
-      if (activeThumbIdx != -1 || shouldAlwaysShowLabel()) {
-        ensureLabelsAdded();
-      } else {
-        ensureLabelsRemoved();
-      }
-    } else {
-      ensureLabelsRemoved();
+    if ((thumbIsPressed || isFocused()) && isEnabled()) {
+      maybeDrawCompatHalo(canvas, trackWidth, yCenter);
     }
+
+    updateLabels();
 
     drawThumbs(canvas, trackWidth, yCenter);
   }
@@ -1764,8 +2022,8 @@ abstract class BaseSlider<
    * float[1]} is the normalized right position of the range.
    */
   private float[] getActiveRange() {
-    float max = max(getValues());
-    float min = min(getValues());
+    float min = values.get(0);
+    float max = values.get(values.size() - 1);
     float left = normalizeValue(values.size() == 1 ? valueFrom : min);
     float right = normalizeValue(max);
 
@@ -1777,13 +2035,35 @@ abstract class BaseSlider<
     float[] activeRange = getActiveRange();
     float right = trackSidePadding + activeRange[1] * width;
     if (right < trackSidePadding + width) {
-      canvas.drawLine(right, yCenter, trackSidePadding + width, yCenter, inactiveTrackPaint);
+      if (hasGapBetweenThumbAndTrack()) {
+        trackRect.set(
+            right + thumbTrackGapSize,
+            yCenter - trackHeight / 2f,
+            trackSidePadding + width + trackHeight / 2f,
+            yCenter + trackHeight / 2f);
+        updateTrack(canvas, inactiveTrackPaint, trackRect, FullCornerDirection.RIGHT);
+      } else {
+        inactiveTrackPaint.setStyle(Style.STROKE);
+        inactiveTrackPaint.setStrokeCap(Cap.ROUND);
+        canvas.drawLine(right, yCenter, trackSidePadding + width, yCenter, inactiveTrackPaint);
+      }
     }
 
     // Also draw inactive track to the left if there is any
     float left = trackSidePadding + activeRange[0] * width;
     if (left > trackSidePadding) {
-      canvas.drawLine(trackSidePadding, yCenter, left, yCenter, inactiveTrackPaint);
+      if (hasGapBetweenThumbAndTrack()) {
+        trackRect.set(
+            trackSidePadding - trackHeight / 2f,
+            yCenter - trackHeight / 2f,
+            left - thumbTrackGapSize,
+            yCenter + trackHeight / 2f);
+        updateTrack(canvas, inactiveTrackPaint, trackRect, FullCornerDirection.LEFT);
+      } else {
+        inactiveTrackPaint.setStyle(Style.STROKE);
+        inactiveTrackPaint.setStrokeCap(Cap.ROUND);
+        canvas.drawLine(trackSidePadding, yCenter, left, yCenter, inactiveTrackPaint);
+      }
     }
   }
 
@@ -1803,7 +2083,134 @@ abstract class BaseSlider<
     float[] activeRange = getActiveRange();
     float right = trackSidePadding + activeRange[1] * width;
     float left = trackSidePadding + activeRange[0] * width;
-    canvas.drawLine(left, yCenter, right, yCenter, activeTrackPaint);
+
+    if (hasGapBetweenThumbAndTrack()) {
+      FullCornerDirection direction = FullCornerDirection.NONE;
+      if (values.size() == 1) { // Only 1 thumb
+        direction = isRtl() ? FullCornerDirection.RIGHT : FullCornerDirection.LEFT;
+      }
+
+      for (int i = 0; i < values.size(); i++) {
+        if (values.size() > 1) {
+          if (i > 0) {
+            left = valueToX(values.get(i - 1));
+          }
+          right = valueToX(values.get(i));
+          if (isRtl()) { // Swap left right
+            float temp = left;
+            left = right;
+            right = temp;
+          }
+        }
+
+        switch (direction) {
+          case NONE:
+            left += thumbTrackGapSize;
+            right -= thumbTrackGapSize;
+            break;
+          case LEFT:
+            left -= trackHeight / 2f;
+            right -= thumbTrackGapSize;
+            break;
+          case RIGHT:
+            left += thumbTrackGapSize;
+            right += trackHeight / 2f;
+            break;
+          default:
+            // fall through
+        }
+
+        // Nothing to draw if left is bigger than right.
+        if (left >= right) {
+          continue;
+        }
+
+        trackRect.set(left, yCenter - trackHeight / 2f, right, yCenter + trackHeight / 2f);
+        updateTrack(canvas, activeTrackPaint, trackRect, direction);
+      }
+    } else {
+      activeTrackPaint.setStyle(Style.STROKE);
+      activeTrackPaint.setStrokeCap(Cap.ROUND);
+      canvas.drawLine(left, yCenter, right, yCenter, activeTrackPaint);
+    }
+  }
+
+  private boolean hasGapBetweenThumbAndTrack() {
+    return thumbTrackGapSize > 0;
+  }
+
+  // The direction where the track has full corners.
+  private enum FullCornerDirection {
+    BOTH,
+    LEFT,
+    RIGHT,
+    NONE
+  }
+
+  private void updateTrack(
+      Canvas canvas, Paint paint, RectF bounds, FullCornerDirection direction) {
+    float leftCornerSize = trackHeight / 2f;
+    float rightCornerSize = trackHeight / 2f;
+    switch (direction) {
+      case BOTH:
+        break;
+      case LEFT:
+        rightCornerSize = trackInsideCornerSize;
+        break;
+      case RIGHT:
+        leftCornerSize = trackInsideCornerSize;
+        break;
+      case NONE:
+        leftCornerSize = trackInsideCornerSize;
+        rightCornerSize = trackInsideCornerSize;
+        break;
+    }
+
+    paint.setStyle(Style.FILL);
+    paint.setStrokeCap(Cap.BUTT);
+    paint.setAntiAlias(true);
+
+    // Draws track path with rounded corners.
+    trackPath.reset();
+    if (bounds.width() >= leftCornerSize + rightCornerSize) {
+      // Fills one rounded rectangle.
+      trackPath.addRoundRect(bounds, getCornerRadii(leftCornerSize, rightCornerSize), Direction.CW);
+      canvas.drawPath(trackPath, paint);
+    } else {
+      // Clips the canvas and draws the fully rounded track.
+      float minCornerSize = min(leftCornerSize, rightCornerSize);
+      float maxCornerSize = max(leftCornerSize, rightCornerSize);
+      canvas.save();
+      // Clips the canvas using the current bounds with the smaller corner size.
+      trackPath.addRoundRect(bounds, minCornerSize, minCornerSize, Direction.CW);
+      canvas.clipPath(trackPath);
+      // Then draws a rectangle with the minimum width for full corners.
+      switch (direction) {
+        case LEFT:
+          cornerRect.set(bounds.left, bounds.top, bounds.left + 2 * maxCornerSize, bounds.bottom);
+          break;
+        case RIGHT:
+          cornerRect.set(bounds.right - 2 * maxCornerSize, bounds.top, bounds.right, bounds.bottom);
+          break;
+        default:
+          cornerRect.set(
+              bounds.centerX() - maxCornerSize,
+              bounds.top,
+              bounds.centerX() + maxCornerSize,
+              bounds.bottom);
+      }
+      canvas.drawRoundRect(cornerRect, maxCornerSize, maxCornerSize, paint);
+      canvas.restore();
+    }
+  }
+
+  private float[] getCornerRadii(float leftSide, float rightSide) {
+    return new float[] {
+      leftSide, leftSide,
+      rightSide, rightSide,
+      rightSide, rightSide,
+      leftSide, leftSide
+    };
   }
 
   private void maybeDrawTicks(@NonNull Canvas canvas) {
@@ -1812,25 +2219,56 @@ abstract class BaseSlider<
     }
 
     float[] activeRange = getActiveRange();
-    int leftPivotIndex = pivotIndex(ticksCoordinates, activeRange[0]);
-    int rightPivotIndex = pivotIndex(ticksCoordinates, activeRange[1]);
 
-    // Draw inactive ticks to the left of the smallest thumb.
-    canvas.drawPoints(ticksCoordinates, 0, leftPivotIndex * 2, inactiveTicksPaint);
+    // Calculate the index of the left tick of the active track.
+    final int leftActiveTickIndex =
+        (int) Math.ceil(activeRange[0] * (ticksCoordinates.length / 2f - 1));
 
-    // Draw active ticks between the thumbs.
-    canvas.drawPoints(
-        ticksCoordinates,
-        leftPivotIndex * 2,
-        rightPivotIndex * 2 - leftPivotIndex * 2,
-        activeTicksPaint);
+    // Calculate the index of the right tick of the active track.
+    final int rightActiveTickIndex =
+        (int) Math.floor(activeRange[1] * (ticksCoordinates.length / 2f - 1));
 
-    // Draw inactive ticks to the right of the largest thumb.
-    canvas.drawPoints(
-        ticksCoordinates,
-        rightPivotIndex * 2,
-        ticksCoordinates.length - rightPivotIndex * 2,
-        inactiveTicksPaint);
+    // Draw ticks on the left inactive track (if any).
+    if (leftActiveTickIndex > 0) {
+      canvas.drawPoints(
+          ticksCoordinates,
+          0,
+          leftActiveTickIndex * 2,
+          inactiveTicksPaint);
+    }
+
+    // Draw ticks on the active track (if any).
+    if (leftActiveTickIndex <= rightActiveTickIndex) {
+      canvas.drawPoints(
+          ticksCoordinates,
+          leftActiveTickIndex * 2,
+          (rightActiveTickIndex - leftActiveTickIndex + 1) * 2,
+          activeTicksPaint);
+    }
+
+    // Draw ticks on the right inactive track (if any).
+    if ((rightActiveTickIndex + 1) * 2 < ticksCoordinates.length) {
+      canvas.drawPoints(
+          ticksCoordinates,
+          (rightActiveTickIndex + 1) * 2,
+          ticksCoordinates.length - (rightActiveTickIndex + 1) * 2,
+          inactiveTicksPaint);
+    }
+  }
+
+  private void maybeDrawStopIndicator(@NonNull Canvas canvas, int yCenter) {
+    if (trackStopIndicatorSize <= 0) {
+      return;
+    }
+
+    // Draw stop indicator at the end of the track.
+    if (values.size() >= 1 && values.get(values.size() - 1) < valueTo) {
+      canvas.drawPoint(valueToX(valueTo), yCenter, stopIndicatorPaint);
+    }
+    // Multiple thumbs, inactive track may be visible at the start.
+    if (values.size() > 1 && values.get(0) > valueFrom) {
+      canvas.drawPoint(valueToX(valueFrom), yCenter, stopIndicatorPaint);
+    }
   }
 
   private void drawThumbs(@NonNull Canvas canvas, int width, int yCenter) {
@@ -1845,7 +2283,10 @@ abstract class BaseSlider<
         // transparent.
         if (!isEnabled()) {
           canvas.drawCircle(
-              trackSidePadding + normalizeValue(value) * width, yCenter, thumbRadius, thumbPaint);
+              trackSidePadding + normalizeValue(value) * width,
+              yCenter,
+              getThumbRadius(),
+              thumbPaint);
         }
         drawThumbDrawable(canvas, width, yCenter, value, defaultThumbDrawable);
       }
@@ -1864,7 +2305,7 @@ abstract class BaseSlider<
     canvas.restore();
   }
 
-  private void maybeDrawHalo(@NonNull Canvas canvas, int width, int top) {
+  private void maybeDrawCompatHalo(@NonNull Canvas canvas, int width, int top) {
     // Only draw the halo for devices that aren't using the ripple.
     if (shouldDrawCompatHalo()) {
       int centerX = (int) (trackSidePadding + normalizeValue(values.get(focusedThumbIdx)) * width);
@@ -1903,7 +2344,7 @@ abstract class BaseSlider<
 
         // If we're inside a vertical scrolling container,
         // we should start dragging in ACTION_MOVE
-        if (isInVerticalScrollingContainer()) {
+        if (isPotentialVerticalScroll(event)) {
           break;
         }
 
@@ -1918,13 +2359,22 @@ abstract class BaseSlider<
         thumbIsPressed = true;
         snapTouchPosition();
         updateHaloHotspot();
+        // Update the thumb width when pressed.
+        if (hasGapBetweenThumbAndTrack()) {
+          defaultThumbWidth = thumbWidth;
+          defaultThumbTrackGapSize = thumbTrackGapSize;
+          int pressedThumbWidth = Math.round(thumbWidth * THUMB_WIDTH_PRESSED_RATIO);
+          int delta = thumbWidth - pressedThumbWidth;
+          setThumbWidth(pressedThumbWidth);
+          setThumbTrackGapSize(thumbTrackGapSize - delta / 2);
+        }
         invalidate();
         onStartTrackingTouch();
         break;
       case MotionEvent.ACTION_MOVE:
         if (!thumbIsPressed) {
           // Check if we're trying to scroll vertically instead of dragging this Slider
-          if (isInVerticalScrollingContainer() && abs(x - touchDownX) < scaledTouchSlop) {
+          if (isPotentialVerticalScroll(event) && abs(x - touchDownX) < scaledTouchSlop) {
             return false;
           }
           getParent().requestDisallowInterceptTouchEvent(true);
@@ -1956,6 +2406,14 @@ abstract class BaseSlider<
 
         if (activeThumbIdx != -1) {
           snapTouchPosition();
+          updateHaloHotspot();
+          // Reset the thumb width.
+          if (hasGapBetweenThumbAndTrack()
+              && defaultThumbWidth != -1
+              && defaultThumbTrackGapSize != -1) {
+            setThumbWidth(defaultThumbWidth);
+            setThumbTrackGapSize(defaultThumbTrackGapSize);
+          }
           activeThumbIdx = -1;
           onStopTrackingTouch();
         }
@@ -1970,17 +2428,6 @@ abstract class BaseSlider<
 
     lastEvent = MotionEvent.obtain(event);
     return true;
-  }
-
-  /**
-   * Calculates the index the closest tick coordinates that the thumb should snap to.
-   *
-   * @param coordinates Tick coordinates defined in {@code #setTicksCoordinates()}.
-   * @param position Actual thumb position.
-   * @return Index of the closest tick coordinate.
-   */
-  private static int pivotIndex(float[] coordinates, float position) {
-    return Math.round(position * (coordinates.length / 2 - 1));
   }
 
   private double snapPosition(float position) {
@@ -2009,7 +2456,7 @@ abstract class BaseSlider<
     for (int i = 1; i < values.size(); i++) {
       float valueDiff = abs(values.get(i) - touchValue);
       float valueX = valueToX(values.get(i));
-      if (compare(valueDiff, activeThumbDiff) > 1) {
+      if (compare(valueDiff, activeThumbDiff) > 0) {
         break;
       }
 
@@ -2157,15 +2604,27 @@ abstract class BaseSlider<
     int duration;
     TimeInterpolator interpolator;
     if (enter) {
-      duration = MotionUtils.resolveThemeDuration(getContext(),
-          LABEL_ANIMATION_ENTER_DURATION_ATTR, DEFAULT_LABEL_ANIMATION_ENTER_DURATION);
-      interpolator = MotionUtils.resolveThemeInterpolator(getContext(),
-          LABEL_ANIMATION_ENTER_EASING_ATTR, AnimationUtils.DECELERATE_INTERPOLATOR);
+      duration =
+          MotionUtils.resolveThemeDuration(
+              getContext(),
+              LABEL_ANIMATION_ENTER_DURATION_ATTR,
+              DEFAULT_LABEL_ANIMATION_ENTER_DURATION);
+      interpolator =
+          MotionUtils.resolveThemeInterpolator(
+              getContext(),
+              LABEL_ANIMATION_ENTER_EASING_ATTR,
+              AnimationUtils.DECELERATE_INTERPOLATOR);
     } else {
-      duration = MotionUtils.resolveThemeDuration(getContext(),
-          LABEL_ANIMATION_EXIT_DURATION_ATTR, DEFAULT_LABEL_ANIMATION_EXIT_DURATION);
-      interpolator = MotionUtils.resolveThemeInterpolator(getContext(),
-          LABEL_ANIMATION_EXIT_EASING_ATTR, AnimationUtils.FAST_OUT_LINEAR_IN_INTERPOLATOR);
+      duration =
+          MotionUtils.resolveThemeDuration(
+              getContext(),
+              LABEL_ANIMATION_EXIT_DURATION_ATTR,
+              DEFAULT_LABEL_ANIMATION_EXIT_DURATION);
+      interpolator =
+          MotionUtils.resolveThemeInterpolator(
+              getContext(),
+              LABEL_ANIMATION_EXIT_EASING_ATTR,
+              AnimationUtils.FAST_OUT_LINEAR_IN_INTERPOLATOR);
     }
     animator.setDuration(duration);
     animator.setInterpolator(interpolator);
@@ -2182,6 +2641,37 @@ abstract class BaseSlider<
           }
         });
     return animator;
+  }
+
+  private void updateLabels() {
+    switch (labelBehavior) {
+      case LABEL_GONE:
+        ensureLabelsRemoved();
+        break;
+      case LABEL_VISIBLE:
+        if (isEnabled() && isSliderVisibleOnScreen()) {
+          ensureLabelsAdded();
+        } else {
+          ensureLabelsRemoved();
+        }
+        break;
+      case LABEL_FLOATING:
+      case LABEL_WITHIN_BOUNDS:
+        if (activeThumbIdx != -1 && isEnabled()) {
+          ensureLabelsAdded();
+        } else {
+          ensureLabelsRemoved();
+        }
+        break;
+      default:
+        throw new IllegalArgumentException("Unexpected labelBehavior: " + labelBehavior);
+    }
+  }
+
+  private boolean isSliderVisibleOnScreen() {
+    final Rect contentViewBounds = new Rect();
+    ViewUtils.getContentView(this).getHitRect(contentViewBounds);
+    return getLocalVisibleRect(contentViewBounds);
   }
 
   private void ensureLabelsRemoved() {
@@ -2207,11 +2697,6 @@ abstract class BaseSlider<
   }
 
   private void ensureLabelsAdded() {
-    if (labelBehavior == LABEL_GONE) {
-      // If the label shouldn't be drawn we can skip this.
-      return;
-    }
-
     // If the labels are not animating in, start an animator to show them. ensureLabelsAdded will
     // be called multiple times by BaseSlider's draw method, making this check necessary to avoid
     // creating and starting an animator for each draw call.
@@ -2253,12 +2738,16 @@ abstract class BaseSlider<
 
   private void setValueForLabel(TooltipDrawable label, float value) {
     label.setText(formatValue(value));
+    positionLabel(label, value);
+    ViewUtils.getContentViewOverlay(this).add(label);
+  }
 
+  private void positionLabel(TooltipDrawable label, float value) {
     int left =
         trackSidePadding
             + (int) (normalizeValue(value) * trackWidth)
             - label.getIntrinsicWidth() / 2;
-    int top = calculateTrackCenter() - (labelPadding + thumbRadius);
+    int top = calculateTrackCenter() - (labelPadding + thumbHeight / 2);
     label.setBounds(left, top - label.getIntrinsicHeight(), left + label.getIntrinsicWidth(), top);
 
     // Calculate the difference between the bounds of this view and the bounds of the root view to
@@ -2266,15 +2755,11 @@ abstract class BaseSlider<
     Rect rect = new Rect(label.getBounds());
     DescendantOffsetUtils.offsetDescendantRect(ViewUtils.getContentView(this), this, rect);
     label.setBounds(rect);
-
-    ViewUtils.getContentViewOverlay(this).add(label);
   }
 
   private void invalidateTrack() {
     inactiveTrackPaint.setStrokeWidth(trackHeight);
     activeTrackPaint.setStrokeWidth(trackHeight);
-    inactiveTicksPaint.setStrokeWidth(trackHeight / 2.0f);
-    activeTicksPaint.setStrokeWidth(trackHeight / 2.0f);
   }
 
   /**
@@ -2295,6 +2780,14 @@ abstract class BaseSlider<
       p = p.getParent();
     }
     return false;
+  }
+
+  private static boolean isMouseEvent(MotionEvent event) {
+    return event.getToolType(0) == MotionEvent.TOOL_TYPE_MOUSE;
+  }
+
+  private boolean isPotentialVerticalScroll(MotionEvent event) {
+    return !isMouseEvent(event) && isInVerticalScrollingContainer();
   }
 
   @SuppressWarnings("unchecked")
@@ -2338,6 +2831,7 @@ abstract class BaseSlider<
     activeTrackPaint.setColor(getColorForState(trackColorActive));
     inactiveTicksPaint.setColor(getColorForState(tickColorInactive));
     activeTicksPaint.setColor(getColorForState(tickColorActive));
+    stopIndicatorPaint.setColor(getColorForState(trackColorActive));
     for (TooltipDrawable label : labels) {
       if (label.isStateful()) {
         label.setState(getDrawableState());
@@ -2703,11 +3197,13 @@ abstract class BaseSlider<
   void updateBoundsForVirtualViewId(int virtualViewId, Rect virtualViewBounds) {
     int x = trackSidePadding + (int) (normalizeValue(getValues().get(virtualViewId)) * trackWidth);
     int y = calculateTrackCenter();
-    int touchTargetRadius =
-        (thumbRadius > minTouchTargetSize ? thumbRadius : minTouchTargetSize) / 2;
-
+    int touchTargetOffsetX = max(thumbWidth / 2, minTouchTargetSize / 2);
+    int touchTargetOffsetY = max(thumbHeight / 2, minTouchTargetSize / 2);
     virtualViewBounds.set(
-        x - touchTargetRadius, y - touchTargetRadius, x + touchTargetRadius, y + touchTargetRadius);
+        x - touchTargetOffsetX,
+        y - touchTargetOffsetY,
+        x + touchTargetOffsetX,
+        y + touchTargetOffsetY);
   }
 
   private static class AccessibilityHelper extends ExploreByTouchHelper {
@@ -2766,11 +3262,13 @@ abstract class BaseSlider<
       if (slider.getContentDescription() != null) {
         contentDescription.append(slider.getContentDescription()).append(",");
       }
-      // Add the range to the content description.
+      // Add the range/value to the content description.
+      String verbalValue = slider.formatValue(value);
+      String verbalValueType = slider.getContext().getString(R.string.material_slider_value);
       if (values.size() > 1) {
-        contentDescription.append(startOrEndDescription(virtualViewId));
-        contentDescription.append(slider.formatValue(value));
+        verbalValueType = startOrEndDescription(virtualViewId);
       }
+      contentDescription.append(String.format(Locale.US, "%s, %s", verbalValueType, verbalValue));
       info.setContentDescription(contentDescription.toString());
 
       slider.updateBoundsForVirtualViewId(virtualViewId, virtualViewBounds);

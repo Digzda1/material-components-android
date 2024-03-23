@@ -23,6 +23,7 @@ import android.os.Bundle;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.text.InputType;
+import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -47,7 +48,9 @@ import java.util.Collection;
 @RestrictTo(Scope.LIBRARY_GROUP)
 public class SingleDateSelector implements DateSelector<Long> {
 
+  @Nullable private CharSequence error;
   @Nullable private Long selectedItem;
+  @Nullable private SimpleDateFormat textInputFormat;
 
   @Override
   public void select(long selection) {
@@ -91,6 +94,15 @@ public class SingleDateSelector implements DateSelector<Long> {
   }
 
   @Override
+  public void setTextInputFormat(@Nullable SimpleDateFormat format) {
+    if (format != null) {
+      format = (SimpleDateFormat) UtcDates.getNormalizedFormat(format);
+    }
+
+    this.textInputFormat = format;
+  }
+
+  @Override
   public View onCreateTextInputView(
       @NonNull LayoutInflater layoutInflater,
       @Nullable ViewGroup viewGroup,
@@ -105,8 +117,14 @@ public class SingleDateSelector implements DateSelector<Long> {
       // Using the URI variation places the '/' and '.' in more prominent positions
       dateEditText.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
     }
-    SimpleDateFormat format = UtcDates.getTextInputFormat();
-    String formatHint = UtcDates.getTextInputHint(root.getResources(), format);
+
+    boolean hasCustomFormat = textInputFormat != null;
+    SimpleDateFormat format =
+        hasCustomFormat ? textInputFormat : UtcDates.getDefaultTextInputFormat();
+    String formatHint =
+        hasCustomFormat
+            ? format.toPattern()
+            : UtcDates.getDefaultTextInputHint(root.getResources(), format);
 
     dateTextInput.setPlaceholderText(formatHint);
     if (selectedItem != null) {
@@ -123,11 +141,13 @@ public class SingleDateSelector implements DateSelector<Long> {
             } else {
               select(day);
             }
+            error = null;
             listener.onSelectionChanged(getSelection());
           }
 
           @Override
           void onInvalidDate() {
+            error = dateTextInput.getError();
             listener.onIncompleteSelectionChanged();
           }
         });
@@ -152,6 +172,23 @@ public class SingleDateSelector implements DateSelector<Long> {
     }
     String startString = DateStrings.getYearMonthDay(selectedItem);
     return res.getString(R.string.mtrl_picker_date_header_selected, startString);
+  }
+
+  @NonNull
+  @Override
+  public String getSelectionContentDescription(@NonNull Context context) {
+    Resources res = context.getResources();
+    String placeholder =
+        selectedItem == null
+            ? res.getString(R.string.mtrl_picker_announce_current_selection_none)
+            : DateStrings.getYearMonthDay(selectedItem);
+    return res.getString(R.string.mtrl_picker_announce_current_selection, placeholder);
+  }
+
+  @Nullable
+  @Override
+  public String getError() {
+    return TextUtils.isEmpty(error) ? null : error.toString();
   }
 
   @Override

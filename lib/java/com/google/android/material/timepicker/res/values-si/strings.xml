@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  ~ Copyright (C) 2022 The Android Open Source Project
+  ~ Copyright (C) 2023 The Android Open Source Project
   ~
   ~ Licensed under the Apache License, Version 2.0 (the "License");
   ~ you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@
   <string name="material_timepicker_minute">මිනිත්තු</string>
   <string name="material_timepicker_hour">පැය</string>
   <string name="material_hour_suffix">%1$sයි</string>
+  <string name="material_hour_24h_suffix">පැය %1$sක්</string>
   <string name="material_minute_suffix">මිනිත්තු %1$sයි</string>
   <string name="material_hour_selection">පැය තෝරන්න</string>
   <string name="material_minute_selection">මිනිත්තු තෝරන්න</string>

@@ -16,6 +16,7 @@ and make choices, with a single tap.
 
 **Contents**
 
+*   [Design & API Documentation](#design-api-documentation)
 *   [Using buttons](#using-buttons)
 *   [Elevated button](#elevated-button)
 *   [Filled button](#filled-button)
@@ -25,6 +26,11 @@ and make choices, with a single tap.
 *   [Toggle button](#toggle-button)
 *   [Icon button](#icon-button)
 *   [Theming](#theming-buttons)
+
+## Design & API Documentation
+
+*   [Google Material3 Spec](https://material.io/components/buttons/overview)
+*   [API Reference](https://developer.android.com/reference/com/google/android/material/button/package-summary)
 
 ## Using buttons
 
@@ -137,7 +143,7 @@ Element        | Attribute                | Related method(s)                 | 
 
 Element          | Attribute             | Related method(s)                                                            | Default value
 ---------------- | --------------------- | ---------------------------------------------------------------------------- | -------------
-**Color**        | `app:backgroundTint`  | `setBackgroundColor`<br/>`setBackgroundTintList`<br/>`getBackgroundTintList` | `?attr/colorSurface` (see all [states](https://github.com/material-components/material-components-android/tree/master/lib/java/com/google/android/material/button/res/color/m3_text_button_background_color_selector.xml))
+**Color**        | `app:backgroundTint`  | `setBackgroundColor`<br/>`setBackgroundTintList`<br/>`getBackgroundTintList` | `?attr/colorSurfaceContainerLow` (see all [states](https://github.com/material-components/material-components-android/tree/master/lib/java/com/google/android/material/button/res/color/m3_text_button_background_color_selector.xml))
 **Stroke color** | `app:strokeColor`     | `setStrokeColor`<br/>`setStrokeColorResource`<br/>`getStrokeColor`           | `null`
 **Stroke width** | `app:strokeWidth`     | `setStrokeWidth`<br/>`setStrokeWidthResource`<br/>`getStrokeWidth`           | `0dp`
 **Shape**        | `app:shapeAppearance` | `setShapeAppearanceModel`<br/>`getShapeAppearanceModel`                      | `?attr/shapeAppearanceSmallComponent`
@@ -740,10 +746,11 @@ A toggle button has a shared stroked container, icons and/or text labels.
 
 #### Selection attributes
 
-Element                | Attribute               | Related method(s)                                | Default value
----------------------- | ----------------------- | ------------------------------------------------ | -------------
-**Single selection**   | `app:singleSelection`   | `setSingleSelection`<br/>`isSingleSelection`     | `false`
-**Selection required** | `app:selectionRequired` | `setSelectionRequired`<br/>`isSelectionRequired` | `false`
+Element                             | Attribute               | Related method(s)                                | Default value
+----------------------------------- | ----------------------- | ------------------------------------------------ | -------------
+**Single selection**                | `app:singleSelection`   | `setSingleSelection`<br/>`isSingleSelection`     | `false`
+**Selection required**              | `app:selectionRequired` | `setSelectionRequired`<br/>`isSelectionRequired` | `false`
+**Enable the group and all children | `android:enabled`       | `setEnabled`<br/>`isEnabled`                     | `true`
 
 #### Styles
 
@@ -770,8 +777,8 @@ API and source code:
 *   `CheckBox`
     *   [Class description](https://developer.android.com/reference/android/widget/CheckBox)
 
-**Note** The `CheckBox` API is just one of several inputs that can implement the
-icon button. See other
+**Note:** The `CheckBox` API is just one of several inputs that can implement
+the icon button. See other
 [selection controls](https://material.io/components/selection-controls/) for
 more details.
 
@@ -839,6 +846,14 @@ information.
 *   Ensure that the tooltip describes the button’s action, rather than
     the icon.
 
+**Note:** The examples below show how to create an icon button using `Button`
+which will be inflated to `MaterialButton` when using a Material theme. There is
+a known performance issue where `MaterialButton` takes longer to initialize when
+compared to `ImageButton` or `AppCompatImageButton`, in large part because
+`MaterialButton` extends from `AppCompatButton` which supports more than just
+icon buttons. Consider using those pure icon button alternatives if the extra
+latency causes a noticeable issue for your app.
+
 #### Icon button examples
 
 API and source code:
@@ -861,6 +876,8 @@ In the layout:
     android:id="@+id/iconButton"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
+    android:contentDescription="@string/standard_icon_btn_desc"
+    app:icon="@drawable/ic_icon_24dp"
 />
 ```
 
@@ -886,6 +903,8 @@ In the layout:
     android:id="@+id/iconButton"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
+    android:contentDescription="@string/filled_icon_btn_desc"
+    app:icon="@drawable/ic_icon_24dp"
 />
 ```
 
@@ -903,6 +922,8 @@ In the layout:
     android:id="@+id/iconButton"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
+    android:contentDescription="@string/filled_tonal_icon_btn_desc"
+    app:icon="@drawable/ic_icon_24dp"
 />
 ```
 
@@ -920,6 +941,8 @@ In the layout:
     android:id="@+id/iconButton"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
+    android:contentDescription="@string/outlined_icon_btn_desc"
+    app:icon="@drawable/ic_icon_24dp"
 />
 ```
 
@@ -1011,13 +1034,13 @@ theme to all buttons but does not affect other components:
     <item name="shapeAppearance">@style/ShapeAppearance.App.SmallComponent</item>
 </style>
 
-<style name="ThemeOverlay.App.Button.TextButton" parent="">
-    <item name="colorPrimary">@color/shrine_pink_900</item>
+<style name="ThemeOverlay.App.Button.TextButton" parent="ThemeOverlay.Material3.Button.TextButton">
+    <item name="colorOnContainer">@color/shrine_pink_900</item>
 </style>
 
-<style name="ThemeOverlay.App.Button" parent="">
-    <item name="colorPrimary">@color/shrine_pink_100</item>
-    <item name="colorOnPrimary">@color/shrine_pink_900</item>
+<style name="ThemeOverlay.App.Button" parent="ThemeOverlay.Material3.Button">
+    <item name="colorContainer">@color/shrine_pink_100</item>
+    <item name="colorOnContainer">@color/shrine_pink_900</item>
 </style>
 ```
 

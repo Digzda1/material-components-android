@@ -28,6 +28,7 @@ import android.content.res.Resources;
 import android.os.Parcel;
 import android.os.Parcelable;
 import androidx.annotation.IntRange;
+import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
 import com.google.android.material.timepicker.TimePickerControls.ActiveSelection;
 import com.google.android.material.timepicker.TimePickerControls.ClockPeriod;
@@ -65,7 +66,7 @@ class TimeModel implements Parcelable {
     this.format = format;
     period = getPeriod(hour);
     minuteInputValidator = new MaxInputValidator(59);
-    hourInputValidator = new MaxInputValidator(format == CLOCK_24H ? 24 : 12);
+    hourInputValidator = new MaxInputValidator(format == CLOCK_24H ? 23 : 12);
   }
 
   protected TimeModel(Parcel in) {
@@ -186,14 +187,18 @@ class TimeModel implements Parcelable {
     }
   }
 
+  @Nullable
   public static String formatText(Resources resources, CharSequence text) {
     return formatText(resources, text, ZERO_LEADING_NUMBER_FORMAT);
   }
 
+  @Nullable
   public static String formatText(Resources resources, CharSequence text, String format) {
-    return String.format(
-        resources.getConfiguration().locale,
-        format,
-        Integer.parseInt(String.valueOf(text)));
+    try {
+      return String.format(
+          resources.getConfiguration().locale, format, Integer.parseInt(String.valueOf(text)));
+    } catch (NumberFormatException e) {
+      return null;
+    }
   }
 }

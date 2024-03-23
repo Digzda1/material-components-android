@@ -33,6 +33,7 @@ import androidx.annotation.StringRes;
 import androidx.annotation.StyleRes;
 import androidx.core.util.Pair;
 import com.google.android.material.internal.ViewUtils;
+import java.text.SimpleDateFormat;
 import java.util.Collection;
 
 /**
@@ -90,11 +91,33 @@ public interface DateSelector<S> extends Parcelable {
   @NonNull
   String getSelectionDisplayString(Context context);
 
+  /**
+   * Returns the selection content description.
+   *
+   * @param context the {@link Context}
+   * @return The selection content description
+   */
+  @NonNull
+  String getSelectionContentDescription(@NonNull Context context);
+
+  @Nullable
+  String getError();
+
   @StringRes
   int getDefaultTitleResId();
 
   @StyleRes
   int getDefaultThemeResId(Context context);
+
+  /**
+   * Sets the {@link SimpleDateFormat} used to format the text input field hint and error.
+   *
+   * <p>When this is set to null, a default formatter will be used that properly adjusts for
+   * language and locale.
+   *
+   * @param format The format to be used when formatting the text input field
+   */
+  void setTextInputFormat(@Nullable SimpleDateFormat format);
 
   @NonNull
   View onCreateTextInputView(
@@ -116,13 +139,19 @@ public interface DateSelector<S> extends Parcelable {
               return;
             }
           }
-          ViewUtils.hideKeyboard(view);
+          ViewUtils.hideKeyboard(view, /* useWindowInsetsController= */ false);
         };
 
     for (EditText editText : editTexts) {
       editText.setOnFocusChangeListener(listener);
     }
 
-    ViewUtils.requestFocusAndShowKeyboard(editTexts[0]);
+    // TODO(b/246354286): Investigate issue with keyboard not showing on Android 12+
+    View viewToFocus = editTexts[0];
+    viewToFocus.postDelayed(
+        () ->
+            ViewUtils.requestFocusAndShowKeyboard(
+                viewToFocus, /* useWindowInsetsController= */ false),
+        100);
   }
 }

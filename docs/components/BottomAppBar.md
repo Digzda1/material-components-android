@@ -20,9 +20,15 @@ revert back to the previous style.
 
 **Contents**
 
+*   [Design & API documentation](#design-api-documentation)
 *   [Using bottom app bars](#using-bottom-app-bars)
 *   [Bottom app bar](#bottom-app-bar)
 *   [Theming bottom app bars](#theming-bottom-app-bars)
+
+## Design & API Documentation
+
+*   [Google Material3 Spec](https://material.io/components/bottom-app-bar/overview)
+*   [API Reference](https://developer.android.com/reference/com/google/android/material/bottomappbar/package-summary)
 
 ## Using bottom app bars
 
@@ -228,11 +234,12 @@ floating action button (FAB), action item(s) and an overflow menu.
 
 ### Container attributes
 
-Element       | Attribute            | Related method(s)                          | Default value
-------------- | -------------------- | ------------------------------------------ | -------------
-**Color**     | `app:backgroundTint` | `setBackgroundTint`<br>`getBackgroundTint` | `?attr/colorSurface`
-**Elevation** | `app:elevation`      | `setElevation`                             | `3dp`
-**Height**    | `android:minHeight`  | `setMinimumHeight`<br>`getMinimumHeight`   | `80dp`
+Element       | Attribute                | Related method(s)                          | Default value
+------------- | ------------------------ | ------------------------------------------ | -------------
+**Color**     | `app:backgroundTint`     | `setBackgroundTint`<br>`getBackgroundTint` | `?attr/colorSurfaceContainer`
+**Elevation** | `app:elevation`          | `setElevation`                             | `3dp`
+**Height**    | `android:minHeight`      | `setMinimumHeight`<br>`getMinimumHeight`   | `80dp`
+**Shadows**   | `app:addElevationShadow` | N/A                                        | `false`
 
 ### Navigation icon attributes
 

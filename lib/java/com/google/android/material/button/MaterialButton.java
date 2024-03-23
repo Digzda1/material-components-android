@@ -20,6 +20,7 @@ import com.google.android.material.R;
 
 import static androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP;
 import static com.google.android.material.theme.overlay.MaterialThemeOverlay.wrap;
+import static java.lang.Math.ceil;
 import static java.lang.Math.max;
 import static java.lang.Math.min;
 
@@ -38,6 +39,7 @@ import android.os.Parcelable;
 import androidx.appcompat.content.res.AppCompatResources;
 import androidx.appcompat.widget.AppCompatButton;
 import android.text.Layout.Alignment;
+import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.Gravity;
@@ -63,6 +65,7 @@ import androidx.core.widget.TextViewCompat;
 import androidx.customview.view.AbsSavedState;
 import com.google.android.material.internal.ThemeEnforcement;
 import com.google.android.material.internal.ViewUtils;
+import androidx.resourceinspection.annotation.Attribute;
 import com.google.android.material.resources.MaterialResources;
 import com.google.android.material.shape.MaterialShapeUtils;
 import com.google.android.material.shape.ShapeAppearanceModel;
@@ -109,6 +112,11 @@ import java.util.LinkedHashSet;
  *
  * <p>Specify the radius of all four corners of the button using the {@code app:cornerRadius}
  * attribute.
+ *
+ * <p>For more information, see the <a
+ * href="https://github.com/material-components/material-components-android/blob/master/docs/components/Button.md">component
+ * developer guidance</a> and <a href="https://material.io/components/buttons/overview">design
+ * guidelines</a>.
  */
 public class MaterialButton extends AppCompatButton implements Checkable, Shapeable {
 
@@ -203,6 +211,7 @@ public class MaterialButton extends AppCompatButton implements Checkable, Shapea
   @Nullable private Mode iconTintMode;
   @Nullable private ColorStateList iconTint;
   @Nullable private Drawable icon;
+  @Nullable private String accessibilityClassName;
 
   @Px private int iconSize;
   @Px private int iconLeft;
@@ -256,9 +265,16 @@ public class MaterialButton extends AppCompatButton implements Checkable, Shapea
   }
 
   @NonNull
-  private String getA11yClassName() {
+  String getA11yClassName() {
+    if (!TextUtils.isEmpty(accessibilityClassName)) {
+      return accessibilityClassName;
+    }
     // Use the platform widget classes so Talkback can recognize this as a button.
     return (isCheckable() ? CompoundButton.class : Button.class).getName();
+  }
+
+  void setA11yClassName(@Nullable String className) {
+    accessibilityClassName = className;
   }
 
   @Override
@@ -613,24 +629,12 @@ public class MaterialButton extends AppCompatButton implements Checkable, Shapea
   }
 
   private int getTextLayoutWidth() {
-    int maxWidth = 0;
+    float maxWidth = 0;
     int lineCount = getLineCount();
     for (int line = 0; line < lineCount; line++) {
-      maxWidth = max(maxWidth, getTextWidth(getTextInLine(line)));
+      maxWidth = max(maxWidth, getLayout().getLineWidth(line));
     }
-    return maxWidth;
-  }
-
-  private int getTextWidth(CharSequence text) {
-    Paint textPaint = getPaint();
-    String buttonText = text.toString();
-    if (getTransformationMethod() != null) {
-      // if text is transformed, add that transformation to to ensure correct calculation
-      // of icon padding.
-      buttonText = getTransformationMethod().getTransformation(buttonText, this).toString();
-    }
-
-    return min((int) textPaint.measureText(buttonText), getLayout().getEllipsizedWidth());
+    return (int) ceil(maxWidth);
   }
 
   private int getTextHeight() {
@@ -650,12 +654,6 @@ public class MaterialButton extends AppCompatButton implements Checkable, Shapea
     textPaint.getTextBounds(buttonText, 0, buttonText.length(), bounds);
 
     return min(bounds.height(), getLayout().getHeight());
-  }
-
-  private CharSequence getTextInLine(int line) {
-    int start = getLayout().getLineStart(line);
-    int end = getLayout().getLineEnd(line);
-    return getText().subSequence(start, end);
   }
 
   private boolean isLayoutRTL() {
@@ -694,6 +692,7 @@ public class MaterialButton extends AppCompatButton implements Checkable, Shapea
    * @attr ref com.google.android.material.R.styleable#MaterialButton_iconPadding
    * @see #setIconPadding(int)
    */
+  @Attribute("com.google.android.material:iconPadding")
   @Px
   public int getIconPadding() {
     return iconPadding;

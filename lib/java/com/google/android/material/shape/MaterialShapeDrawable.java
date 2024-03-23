@@ -59,6 +59,7 @@ import androidx.annotation.StyleRes;
 import androidx.core.graphics.drawable.TintAwareDrawable;
 import androidx.core.util.ObjectsCompat;
 import com.google.android.material.color.MaterialColors;
+import com.google.android.material.drawable.DrawableUtils;
 import com.google.android.material.elevation.ElevationOverlayProvider;
 import com.google.android.material.shadow.ShadowRenderer;
 import com.google.android.material.shape.ShapeAppearanceModel.CornerSizeUnaryOperator;
@@ -171,13 +172,31 @@ public class MaterialShapeDrawable extends Drawable implements TintAwareDrawable
    * when the overlay will be active.
    */
   @NonNull
-  public static MaterialShapeDrawable createWithElevationOverlay(Context context, float elevation) {
-    int colorSurface =
-        MaterialColors.getColor(
-            context, R.attr.colorSurface, MaterialShapeDrawable.class.getSimpleName());
+  public static MaterialShapeDrawable createWithElevationOverlay(
+      @NonNull Context context, float elevation) {
+    return createWithElevationOverlay(context, elevation, /* backgroundTint= */ null);
+  }
+
+  /**
+   * Returns a {@code MaterialShapeDrawable} with the elevation overlay functionality initialized, a
+   * fill color of {@code backgroundTint}, and an elevation of {@code elevation}. When {@code
+   * backgroundTint} is {@code null}, {@code colorSurface} will be used as default.
+   *
+   * <p>See {@link ElevationOverlayProvider#compositeOverlayIfNeeded(int, float)} for information on
+   * when the overlay will be active.
+   */
+  @NonNull
+  public static MaterialShapeDrawable createWithElevationOverlay(
+      @NonNull Context context, float elevation, @Nullable ColorStateList backgroundTint) {
+    if (backgroundTint == null) {
+      final int colorSurface =
+          MaterialColors.getColor(
+              context, R.attr.colorSurface, MaterialShapeDrawable.class.getSimpleName());
+      backgroundTint = ColorStateList.valueOf(colorSurface);
+    }
     MaterialShapeDrawable materialShapeDrawable = new MaterialShapeDrawable();
     materialShapeDrawable.initializeElevationOverlay(context);
-    materialShapeDrawable.setFillColor(ColorStateList.valueOf(colorSurface));
+    materialShapeDrawable.setFillColor(backgroundTint);
     materialShapeDrawable.setElevation(elevation);
     return materialShapeDrawable;
   }
@@ -199,15 +218,15 @@ public class MaterialShapeDrawable extends Drawable implements TintAwareDrawable
     this((ShapeAppearanceModel) shapePathModel);
   }
 
-  /**
-   * @param shapeAppearanceModel the {@link ShapeAppearanceModel} containing the path that will be
-   *     rendered in this drawable.
-   */
   public MaterialShapeDrawable(@NonNull ShapeAppearanceModel shapeAppearanceModel) {
     this(new MaterialShapeDrawableState(shapeAppearanceModel, null));
   }
 
-  private MaterialShapeDrawable(@NonNull MaterialShapeDrawableState drawableState) {
+  /**
+   * @hide
+   */
+  @RestrictTo(LIBRARY_GROUP)
+  protected MaterialShapeDrawable(@NonNull MaterialShapeDrawableState drawableState) {
     this.drawableState = drawableState;
     strokePaint.setStyle(Style.STROKE);
     fillPaint.setStyle(Style.FILL);
@@ -1212,14 +1231,7 @@ public class MaterialShapeDrawable extends Drawable implements TintAwareDrawable
     }
 
     calculatePath(getBoundsAsRectF(), path);
-    if (path.isConvex() || Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-      try {
-        outline.setConvexPath(path);
-      } catch (IllegalArgumentException ignored) {
-        // The change to support concave paths was done late in the release cycle. People
-        // using pre-releases of Q would experience a crash here.
-      }
-    }
+    DrawableUtils.setOutlineToPath(outline, path);
   }
 
   private void calculatePath(@NonNull RectF bounds, @NonNull Path path) {
@@ -1400,39 +1412,45 @@ public class MaterialShapeDrawable extends Drawable implements TintAwareDrawable
     return drawableState.shapeAppearanceModel.isRoundRect(getBoundsAsRectF());
   }
 
-  static final class MaterialShapeDrawableState extends ConstantState {
+  /**
+   * Drawable state for {@link MaterialShapeDrawable}
+   *
+   * @hide
+   */
+  @RestrictTo(LIBRARY_GROUP)
+  protected static class MaterialShapeDrawableState extends ConstantState {
 
-    @NonNull public ShapeAppearanceModel shapeAppearanceModel;
-    @Nullable public ElevationOverlayProvider elevationOverlayProvider;
+    @NonNull ShapeAppearanceModel shapeAppearanceModel;
+    @Nullable ElevationOverlayProvider elevationOverlayProvider;
 
-    @Nullable public ColorFilter colorFilter;
-    @Nullable public ColorStateList fillColor = null;
-    @Nullable public ColorStateList strokeColor = null;
-    @Nullable public ColorStateList strokeTintList = null;
-    @Nullable public ColorStateList tintList = null;
-    @Nullable public PorterDuff.Mode tintMode = PorterDuff.Mode.SRC_IN;
-    @Nullable public Rect padding = null;
+    @Nullable ColorFilter colorFilter;
+    @Nullable ColorStateList fillColor = null;
+    @Nullable ColorStateList strokeColor = null;
+    @Nullable ColorStateList strokeTintList = null;
+    @Nullable ColorStateList tintList = null;
+    @Nullable PorterDuff.Mode tintMode = PorterDuff.Mode.SRC_IN;
+    @Nullable Rect padding = null;
 
-    public float scale = 1f;
-    public float interpolation = 1f;
-    public float strokeWidth;
+    float scale = 1f;
+    float interpolation = 1f;
+    float strokeWidth;
 
-    public int alpha = 255;
-    public float parentAbsoluteElevation = 0;
-    public float elevation = 0;
-    public float translationZ = 0;
-    public int shadowCompatMode = SHADOW_COMPAT_MODE_DEFAULT;
-    public int shadowCompatRadius = 0;
-    public int shadowCompatOffset = 0;
-    public int shadowCompatRotation = 0;
+    int alpha = 255;
+    float parentAbsoluteElevation = 0;
+    float elevation = 0;
+    float translationZ = 0;
+    int shadowCompatMode = SHADOW_COMPAT_MODE_DEFAULT;
+    int shadowCompatRadius = 0;
+    int shadowCompatOffset = 0;
+    int shadowCompatRotation = 0;
 
-    public boolean useTintColorForShadow = false;
+    boolean useTintColorForShadow = false;
 
-    public Style paintStyle = Style.FILL_AND_STROKE;
+    Style paintStyle = Style.FILL_AND_STROKE;
 
     public MaterialShapeDrawableState(
-        ShapeAppearanceModel shapeAppearanceModel,
-        ElevationOverlayProvider elevationOverlayProvider) {
+        @NonNull ShapeAppearanceModel shapeAppearanceModel,
+        @Nullable ElevationOverlayProvider elevationOverlayProvider) {
       this.shapeAppearanceModel = shapeAppearanceModel;
       this.elevationOverlayProvider = elevationOverlayProvider;
     }

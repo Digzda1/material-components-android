@@ -25,6 +25,7 @@ import io.material.catalog.bottomnav.BottomNavigationFragment;
 import io.material.catalog.bottomsheet.BottomSheetFragment;
 import io.material.catalog.button.ButtonsFragment;
 import io.material.catalog.card.CardFragment;
+import io.material.catalog.carousel.CarouselFragment;
 import io.material.catalog.checkbox.CheckBoxFragment;
 import io.material.catalog.chip.ChipFragment;
 import io.material.catalog.color.ColorsFragment;
@@ -42,7 +43,9 @@ import io.material.catalog.navigationrail.NavigationRailFragment;
 import io.material.catalog.preferences.CatalogPreferencesDialogFragment;
 import io.material.catalog.progressindicator.ProgressIndicatorFragment;
 import io.material.catalog.radiobutton.RadioButtonFragment;
+import io.material.catalog.search.SearchFragment;
 import io.material.catalog.shapetheming.ShapeThemingFragment;
+import io.material.catalog.sidesheet.SideSheetFragment;
 import io.material.catalog.slider.SliderFragment;
 import io.material.catalog.tabs.TabsFragment;
 import io.material.catalog.textfield.TextFieldFragment;
@@ -59,6 +62,7 @@ import io.material.catalog.transition.TransitionFragment;
       BottomNavigationFragment.Module.class,
       BottomSheetFragment.Module.class,
       CardFragment.Module.class,
+      CarouselFragment.Module.class,
       CheckBoxFragment.Module.class,
       ChipFragment.Module.class,
       ColorsFragment.Module.class,
@@ -73,8 +77,10 @@ import io.material.catalog.transition.TransitionFragment;
       NavigationRailFragment.Module.class,
       ProgressIndicatorFragment.Module.class,
       RadioButtonFragment.Module.class,
+      SearchFragment.Module.class,
       ShapeableImageViewFragment.Module.class,
       ShapeThemingFragment.Module.class,
+      SideSheetFragment.Module.class,
       SliderFragment.Module.class,
       SwitchFragment.Module.class,
       TabsFragment.Module.class,

@@ -23,6 +23,7 @@ import static androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.StateListDrawable;
@@ -33,6 +34,7 @@ import android.util.AttributeSet;
 import android.util.TypedValue;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.ViewStub;
 import android.widget.CheckedTextView;
 import android.widget.FrameLayout;
@@ -59,6 +61,8 @@ public class NavigationMenuItemView extends ForegroundLinearLayout implements Me
   private boolean needsEmptyIcon;
 
   boolean checkable;
+
+  boolean isBold = true;
 
   private final CheckedTextView textView;
 
@@ -126,6 +130,11 @@ public class NavigationMenuItemView extends ForegroundLinearLayout implements Me
     adjustAppearance();
   }
 
+  public void initialize(@NonNull MenuItemImpl itemData, boolean isBold) {
+    this.isBold = isBold;
+    initialize(itemData, 0);
+  }
+
   private boolean shouldExpandActionArea() {
     return itemData.getTitle() == null
         && itemData.getIcon() == null
@@ -164,6 +173,10 @@ public class NavigationMenuItemView extends ForegroundLinearLayout implements Me
         actionArea =
             (FrameLayout)
                 ((ViewStub) findViewById(R.id.design_menu_item_action_area_stub)).inflate();
+      }
+      // Make sure to remove the existing parent if the View is reused
+      if (actionView.getParent() != null) {
+        ((ViewGroup) actionView.getParent()).removeView(actionView);
       }
       actionArea.removeAllViews();
       actionArea.addView(actionView);
@@ -208,6 +221,9 @@ public class NavigationMenuItemView extends ForegroundLinearLayout implements Me
   public void setChecked(boolean checked) {
     refreshDrawableState();
     textView.setChecked(checked);
+    // TODO(b/246765947): Use component tokens to control font weight
+    textView.setTypeface(
+        textView.getTypeface(), checked && isBold ? Typeface.BOLD : Typeface.NORMAL);
   }
 
   @Override

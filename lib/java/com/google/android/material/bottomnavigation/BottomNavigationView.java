@@ -86,9 +86,14 @@ import com.google.android.material.shape.MaterialShapeDrawable;
  *          android:icon="@drawable/ic_action_navigation_menu" /&gt;
  * &lt;/menu&gt;
  * </pre>
+ *
+ * <p>For more information, see the <a
+ * href="https://github.com/material-components/material-components-android/blob/master/docs/components/BottomNavigation.md">component
+ * developer guidance</a> and <a
+ * href="https://material.io/components/navigation-bar/overview">design guidelines</a>.
  */
 public class BottomNavigationView extends NavigationBarView {
-  static final int MAX_ITEM_COUNT = 5;
+  private static final int MAX_ITEM_COUNT = 5;
 
   public BottomNavigationView(@NonNull Context context) {
     this(context, null);
@@ -124,11 +129,12 @@ public class BottomNavigationView extends NavigationBarView {
           attributes.getDimensionPixelSize(R.styleable.BottomNavigationView_android_minHeight, 0));
     }
 
-    attributes.recycle();
-
-    if (shouldDrawCompatibilityTopDivider()) {
+    if (attributes.getBoolean(R.styleable.BottomNavigationView_compatShadowEnabled, true)
+        && shouldDrawCompatibilityTopDivider()) {
       addCompatibilityTopDivider(context);
     }
+
+    attributes.recycle();
 
     applyWindowInsets();
   }
